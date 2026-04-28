@@ -1,0 +1,1035 @@
+/* ─────────────────────────────────────────────────────────────
+   AFRIVO — Platform Admin Design System
+   Corrections appliquées :
+   FIX #5  — Déduplication de .platform-admin-inline-form (1 seule définition)
+   FIX #5  — Suppression des !important en cascade
+   FIX #6  — overflow-x: auto confirmé sur .platform-admin-table-wrap
+   FIX #7  — cursor: pointer + hover visible sur tbody tr
+   FIX #9  — Surcharge AppSelect via --as-height (plus de !important)
+   ───────────────────────────────────────────────────────────── */
+
+.platform-admin-page .platform-admin-toolbar,
+.platform-admin-page .platform-admin-summary-grid,
+.platform-admin-page .platform-admin-dashboard-grid,
+.platform-admin-page .platform-admin-section-grid,
+.platform-admin-page .platform-admin-details-grid,
+.platform-admin-page .platform-admin-grid-form {
+  display: grid;
+  min-width: 0;
+}
+
+.platform-admin-page .platform-admin-summary-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.platform-admin-page .platform-admin-dashboard-grid,
+.platform-admin-page .platform-admin-section-grid {
+  grid-template-columns: minmax(0, 1.5fr) minmax(300px, 0.9fr);
+  gap: 18px;
+}
+
+.platform-admin-page .platform-admin-toolbar {
+  grid-template-columns: minmax(0, 1fr) repeat(2, minmax(180px, 220px));
+  gap: 12px;
+}
+
+/* ── Variante A — Inline compacte "Nouvelle organisation" ──
+   FIX #5 : définition unique en flexbox, sans !important       */
+.platform-admin-page .platform-admin-inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+/* Champ labellisé — label au-dessus du champ */
+.platform-admin-page .platform-admin-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.platform-admin-page .platform-admin-form-label {
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-soft);
+  line-height: 1;
+}
+
+/* Tous les éléments interactifs dans l'inline-form : même hauteur */
+.platform-admin-page .platform-admin-inline-form input.filter-input,
+.platform-admin-page .platform-admin-inline-form select.filter-input,
+.platform-admin-page .platform-admin-inline-form .as-trigger {
+  display: block;
+  width: 100%;
+  height: 42px;
+  min-height: 42px;
+  max-height: 42px;
+  padding: 0 12px;
+  font-size: 0.85rem;
+  border-radius: 12px;
+  box-sizing: border-box;
+  line-height: 42px;
+}
+
+/* FIX #9 — surcharge AppSelect via variable CSS + sélecteur renforcé */
+.platform-admin-page .platform-admin-inline-form {
+  --as-height: 42px;
+  --as-radius: 12px;
+}
+
+/*
+  Sélecteur triple pour battre la spécificité de AppSelect.css
+  sans recourir à !important.
+*/
+.platform-admin-page .platform-admin-inline-form .as-trigger,
+.platform-admin-page .platform-admin-inline-form .platform-admin-form-field .as-trigger {
+  height: 42px;
+  min-height: 42px;
+  max-height: 42px;
+  font-size: 0.85rem;
+  border-radius: 12px;
+  padding: 0 12px;
+  box-sizing: border-box;
+  line-height: 1;
+  align-items: center;
+}
+
+.platform-admin-page .platform-admin-inline-form .as-trigger-label,
+.platform-admin-page .platform-admin-inline-form .platform-admin-form-field .as-trigger-label {
+  font-size: 0.85rem;
+  font-weight: 400;
+  line-height: 1;
+}
+
+/* ── Disposition empilée (Disposition F) — champs sur une ligne, bouton dessous ── */
+.platform-admin-page .platform-admin-stacked-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* Surcharge AppSelect dans stacked-form */
+.platform-admin-page .platform-admin-stacked-form {
+  --as-height: 42px;
+  --as-radius: 12px;
+}
+
+.platform-admin-page .platform-admin-stacked-form .as-trigger,
+.platform-admin-page .platform-admin-stacked-form .platform-admin-form-field .as-trigger {
+  height: 42px;
+  min-height: 42px;
+  max-height: 42px;
+  font-size: 0.85rem;
+  border-radius: 12px;
+  padding: 0 12px;
+  box-sizing: border-box;
+  line-height: 1;
+  align-items: center;
+}
+
+.platform-admin-page .platform-admin-stacked-form .as-trigger-label,
+.platform-admin-page .platform-admin-stacked-form .platform-admin-form-field .as-trigger-label {
+  font-size: 0.85rem;
+  font-weight: 400;
+  line-height: 1;
+}
+
+/* Bouton submit pleine largeur */
+.platform-admin-page .platform-admin-stacked-form .primary-button {
+  width: 100%;
+  height: 42px;
+  min-height: 42px;
+  padding: 0 18px;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+/* Bouton submit aligné avec les inputs */
+.platform-admin-page .platform-admin-inline-form .primary-button {
+  height: 42px;
+  min-height: 42px;
+  padding: 0 18px;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+}
+
+.platform-admin-page .platform-admin-field-stack {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.platform-admin-page .platform-admin-helper-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.platform-admin-page .platform-admin-helper-text {
+  color: var(--text-soft);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.platform-admin-page .platform-admin-inline-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #0f766e;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.platform-admin-page .platform-admin-inline-link:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+/* FIX #1 — Erreur slug visible */
+.platform-admin-page .platform-admin-field-error {
+  color: #b91c1c;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+.platform-admin-page .platform-admin-grid-form {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.platform-admin-page .platform-admin-toolbar .filter-input,
+.platform-admin-page .platform-admin-toolbar .as-trigger,
+.platform-admin-page .platform-admin-grid-form .filter-input,
+.platform-admin-page .platform-admin-grid-form .as-trigger {
+  width: 100%;
+}
+
+.platform-admin-page .platform-admin-textarea {
+  min-height: 120px;
+  padding: 14px;
+  resize: vertical;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   #1  TAB-BAR NAVIGATION
+   ═══════════════════════════════════════════════════════════ */
+
+.platform-admin-page .platform-admin-page-links {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  background: rgba(15, 23, 42, 0.045);
+  border-radius: 14px;
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.platform-admin-page .platform-admin-page-links::-webkit-scrollbar {
+  display: none;
+}
+
+.platform-admin-page .platform-admin-page-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 0.84rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: none;
+  transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  flex-shrink: 0;
+}
+
+.platform-admin-page .platform-admin-page-link:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.platform-admin-page .platform-admin-page-link.active {
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--text-main);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08), 0 0 0 0.5px rgba(15, 23, 42, 0.07);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   #2  STATUS BADGES — compact dot style
+   ═══════════════════════════════════════════════════════════ */
+
+.platform-admin-page .platform-admin-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.platform-admin-page .platform-admin-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  background: rgba(148, 163, 184, 0.12);
+  color: #475569;
+  border: none;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.platform-admin-page .platform-admin-badge::before {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.platform-admin-page .platform-admin-badge--active,
+.platform-admin-page .platform-admin-badge--online,
+.platform-admin-page .platform-admin-badge--platform {
+  background: rgba(15, 157, 138, 0.1);
+  color: #0a7c6f;
+}
+
+.platform-admin-page .platform-admin-badge--trial,
+.platform-admin-page .platform-admin-badge--warning,
+.platform-admin-page .platform-admin-badge--suspended {
+  background: rgba(217, 119, 6, 0.1);
+  color: #92580a;
+}
+
+.platform-admin-page .platform-admin-badge--inactive,
+.platform-admin-page .platform-admin-badge--expired,
+.platform-admin-page .platform-admin-badge--neutral {
+  background: rgba(100, 116, 139, 0.1);
+  color: #4f6177;
+}
+
+.platform-admin-page .platform-admin-badge--critical,
+.platform-admin-page .platform-admin-badge--cancelled,
+.platform-admin-page .platform-admin-badge--draft {
+  background: rgba(220, 38, 38, 0.08);
+  color: #a82828;
+}
+
+.platform-admin-page .platform-admin-badge--unlimited {
+  background: rgba(37, 99, 235, 0.08);
+  color: #1d50b4;
+}
+
+/* Code pill */
+.platform-admin-page .platform-admin-code {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.06);
+  color: var(--text-main);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   #3  KPI SUMMARY CARDS
+   ═══════════════════════════════════════════════════════════ */
+
+.platform-admin-page .platform-admin-kpi-card {
+  display: grid;
+  gap: 10px;
+  padding: 20px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-soft);
+  background: var(--bg-card-strong);
+  min-width: 0;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.platform-admin-page .platform-admin-kpi-card:hover {
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
+}
+
+.platform-admin-page .platform-admin-kpi-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.platform-admin-page .platform-admin-kpi-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.platform-admin-page .platform-admin-kpi-icon--teal {
+  background: rgba(15, 157, 138, 0.12);
+  color: #0a7c6f;
+}
+
+.platform-admin-page .platform-admin-kpi-icon--blue {
+  background: rgba(37, 99, 235, 0.1);
+  color: #1d50b4;
+}
+
+.platform-admin-page .platform-admin-kpi-icon--amber {
+  background: rgba(217, 119, 6, 0.1);
+  color: #92580a;
+}
+
+.platform-admin-page .platform-admin-kpi-icon--rose {
+  background: rgba(220, 38, 38, 0.08);
+  color: #a82828;
+}
+
+.platform-admin-page .platform-admin-kpi-icon--slate {
+  background: rgba(100, 116, 139, 0.1);
+  color: #4f6177;
+}
+
+.platform-admin-page .platform-admin-kpi-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.platform-admin-page .platform-admin-kpi-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-soft);
+}
+
+.platform-admin-page .platform-admin-kpi-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-main);
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.platform-admin-page .platform-admin-kpi-trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.platform-admin-page .platform-admin-kpi-trend--up     { color: #0a7c6f; }
+.platform-admin-page .platform-admin-kpi-trend--down   { color: #a82828; }
+.platform-admin-page .platform-admin-kpi-trend--neutral { color: var(--text-soft); }
+
+/* ═══════════════════════════════════════════════════════════
+   #4  TABLE — entity avatars + vertical-align middle
+   FIX #6 — overflow-x: auto confirmé
+   FIX #7 — cursor + hover visible sur les lignes
+   ═══════════════════════════════════════════════════════════ */
+
+.platform-admin-page .platform-admin-table-wrap {
+  width: 100%;
+  /* FIX #6 — scroll horizontal sur mobile */
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.platform-admin-page .platform-admin-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+.platform-admin-page .platform-admin-table th,
+.platform-admin-page .platform-admin-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.platform-admin-page .platform-admin-table th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-soft);
+  background: rgba(248, 250, 252, 0.96);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  font-weight: 700;
+}
+
+/* FIX #7 — affordance cliquable claire */
+.platform-admin-page .platform-admin-table tbody tr {
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+}
+
+.platform-admin-page .platform-admin-table tbody tr:hover {
+  background: rgba(15, 157, 138, 0.035);
+}
+
+.platform-admin-page .platform-admin-table tbody tr:focus-visible {
+  outline: 2px solid rgba(15, 157, 138, 0.5);
+  outline-offset: -2px;
+}
+
+.platform-admin-page .platform-admin-table tbody tr.active {
+  background: rgba(15, 157, 138, 0.055);
+}
+
+/* Entity cell: avatar + text stack */
+.platform-admin-page .platform-admin-entity-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.platform-admin-page .platform-admin-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.platform-admin-page .platform-admin-avatar--active {
+  background: rgba(15, 157, 138, 0.12);
+  color: #0a7c6f;
+}
+
+.platform-admin-page .platform-admin-avatar--trial {
+  background: rgba(217, 119, 6, 0.1);
+  color: #92580a;
+}
+
+.platform-admin-page .platform-admin-avatar--suspended,
+.platform-admin-page .platform-admin-avatar--expired,
+.platform-admin-page .platform-admin-avatar--critical {
+  background: rgba(220, 38, 38, 0.08);
+  color: #a82828;
+}
+
+.platform-admin-page .platform-admin-avatar--inactive,
+.platform-admin-page .platform-admin-avatar--neutral {
+  background: rgba(100, 116, 139, 0.1);
+  color: #4f6177;
+}
+
+.platform-admin-page .platform-admin-avatar--platform,
+.platform-admin-page .platform-admin-avatar--blue {
+  background: rgba(37, 99, 235, 0.1);
+  color: #1d50b4;
+}
+
+.platform-admin-page .platform-admin-row-title {
+  display: grid;
+  gap: 2px;
+}
+
+.platform-admin-page .platform-admin-row-title strong,
+.platform-admin-page .platform-admin-side-card strong {
+  color: var(--text-main);
+  font-size: 0.87rem;
+}
+
+.platform-admin-page .platform-admin-row-title span,
+.platform-admin-page .platform-admin-side-card p,
+.platform-admin-page .platform-admin-muted,
+.platform-admin-page .platform-admin-empty-state p {
+  color: var(--text-soft);
+  font-size: 0.77rem;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   #5  STACK-CARDS — no gradient, harmonized radius
+   ═══════════════════════════════════════════════════════════ */
+
+.platform-admin-page .platform-admin-side-card,
+.platform-admin-page .platform-admin-empty-state {
+  display: grid;
+  gap: 12px;
+}
+
+.platform-admin-page .platform-admin-detail-list {
+  display: grid;
+  gap: 0;
+}
+
+.platform-admin-page .platform-admin-detail-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 11px 0;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.platform-admin-page .platform-admin-detail-row:last-child {
+  border-bottom: 0;
+}
+
+.platform-admin-page .platform-admin-detail-row strong {
+  color: var(--text-soft);
+  font-size: 0.81rem;
+  font-weight: 600;
+}
+
+.platform-admin-page .platform-admin-detail-row span {
+  color: var(--text-main);
+  text-align: right;
+  font-size: 0.84rem;
+}
+
+.platform-admin-page .platform-admin-stack-list {
+  display: grid;
+  gap: 10px;
+}
+
+.platform-admin-page .platform-admin-stack-card {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-soft);
+  background: var(--bg-card-strong);
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.platform-admin-page .platform-admin-stack-card:hover {
+  border-color: rgba(15, 157, 138, 0.18);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+}
+
+.platform-admin-page .platform-admin-stack-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.platform-admin-page .platform-admin-inline-stats {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.platform-admin-page .platform-admin-inline-stats span {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  padding: 4px 9px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.04);
+  color: var(--text-soft);
+  font-size: 0.78rem;
+}
+
+.platform-admin-page .platform-admin-inline-stats strong {
+  color: var(--text-main);
+  font-weight: 700;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   #6  EMPTY STATES — icon + message + optional CTA
+   ═══════════════════════════════════════════════════════════ */
+
+.platform-admin-page .platform-admin-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 200px;
+  text-align: center;
+  padding: 32px 24px;
+}
+
+.platform-admin-page .platform-admin-empty-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.05);
+  color: var(--text-soft);
+  margin-bottom: 6px;
+  flex-shrink: 0;
+}
+
+.platform-admin-page .platform-admin-empty-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.platform-admin-page .platform-admin-empty-state strong {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.platform-admin-page .platform-admin-empty-state p {
+  font-size: 0.82rem;
+  color: var(--text-soft);
+  max-width: 280px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+/* ─── ACTION ROW ─────────────────────────────────────────── */
+
+.platform-admin-page .platform-admin-action-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ─── RESPONSIVE ─────────────────────────────────────────── */
+
+@media (max-width: 1080px) {
+  .platform-admin-page .platform-admin-dashboard-grid,
+  .platform-admin-page .platform-admin-section-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .platform-admin-page .platform-admin-grid-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 860px) {
+  .platform-admin-page .platform-admin-toolbar,
+  .platform-admin-page .platform-admin-grid-form {
+    grid-template-columns: 1fr;
+  }
+
+  .platform-admin-page .platform-admin-inline-form {
+    flex-direction: column;
+  }
+
+  .platform-admin-page .platform-admin-inline-form .platform-admin-form-field,
+  .platform-admin-page .platform-admin-inline-form .primary-button {
+    width: 100%;
+    flex: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .platform-admin-page .platform-admin-detail-row {
+    flex-direction: column;
+  }
+
+  .platform-admin-page .platform-admin-detail-row span {
+    text-align: left;
+  }
+
+  .platform-admin-page .platform-admin-page-links {
+    width: 100%;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ONBOARDING STEPPER
+   ═══════════════════════════════════════════════════════════ */
+
+.pa-stepper {
+  display: grid;
+  gap: 0;
+}
+
+.pa-stepper-header {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 32px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.pa-stepper-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  position: relative;
+  min-width: 72px;
+}
+
+.pa-stepper-connector {
+  position: absolute;
+  top: 18px;
+  left: calc(50% + 20px);
+  right: calc(-50% + 20px);
+  height: 2px;
+  background: rgba(15, 23, 42, 0.1);
+  transition: background 0.3s;
+}
+
+.pa-stepper-connector--done {
+  background: #0f766e;
+}
+
+.pa-stepper-bubble {
+  position: relative;
+  z-index: 1;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid rgba(15, 23, 42, 0.15);
+  background: #fff;
+  color: var(--text-soft);
+  font-weight: 700;
+  font-size: 0.88rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.25s, background 0.25s, color 0.25s, box-shadow 0.25s;
+  flex-shrink: 0;
+}
+
+.pa-stepper-bubble--active {
+  border-color: #0f766e;
+  background: #0f766e;
+  color: #fff;
+  box-shadow: 0 0 0 4px rgba(15, 157, 138, 0.14);
+}
+
+.pa-stepper-bubble--done {
+  border-color: #0f766e;
+  background: rgba(15, 157, 138, 0.1);
+  color: #0f766e;
+}
+
+.pa-stepper-label {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--text-soft);
+  text-align: center;
+  white-space: nowrap;
+  transition: color 0.2s;
+}
+
+.pa-stepper-label--active { color: #0f766e; }
+.pa-stepper-label--done   { color: #0f766e; opacity: 0.75; }
+
+.pa-stepper-body {
+  min-height: 340px;
+}
+
+.pa-stepper-step-title {
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.07);
+  margin-bottom: 4px;
+}
+
+.pa-stepper-step-title h4 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 4px;
+}
+
+.pa-stepper-step-title p {
+  font-size: 0.86rem;
+  color: var(--text-soft);
+}
+
+.pa-stepper-fields {
+  display: grid;
+  gap: 14px;
+}
+
+.pa-stepper-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.pa-stepper-field-group {
+  display: grid;
+  gap: 6px;
+}
+
+.pa-stepper-hint {
+  font-size: 0.79rem;
+  color: var(--text-soft);
+  line-height: 1.5;
+}
+
+.pa-stepper-date-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.pa-stepper-password-wrap {
+  position: relative;
+}
+
+.pa-stepper-password-wrap .filter-input {
+  padding-right: 44px;
+  width: 100%;
+}
+
+.pa-stepper-eye {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-soft);
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  border-radius: 4px;
+}
+
+.pa-stepper-eye:hover { color: var(--text-main); }
+.pa-stepper-eye svg   { width: 18px; height: 18px; }
+
+.pa-stepper-info-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: rgba(15, 157, 138, 0.07);
+  border: 1px solid rgba(15, 157, 138, 0.18);
+  font-size: 0.86rem;
+  color: var(--text-main);
+}
+
+.pa-stepper-recap {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 0 0;
+}
+
+.pa-stepper-recap-item {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 5px 11px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.04);
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  font-size: 0.8rem;
+  color: var(--text-soft);
+}
+
+.pa-stepper-recap-item strong {
+  color: var(--text-main);
+}
+
+.pa-stepper-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(15, 23, 42, 0.07);
+}
+
+.pa-stepper-nav-left,
+.pa-stepper-nav-right {
+  min-width: 140px;
+}
+
+.pa-stepper-nav-right {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.pa-stepper-progress {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+
+@media (max-width: 640px) {
+  .pa-stepper-label { display: none; }
+  .pa-stepper-nav-left,
+  .pa-stepper-nav-right { min-width: 0; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SKELETON LOADERS
+   ═══════════════════════════════════════════════════════════ */
+
+@keyframes pa-shimmer {
+  0%   { background-position: -800px 0; }
+  100% { background-position:  800px 0; }
+}
+
+.pa-skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(226, 232, 240, 0.7) 25%,
+    rgba(241, 245, 249, 1)   50%,
+    rgba(226, 232, 240, 0.7) 75%
+  );
+  background-size: 1600px 100%;
+  animation: pa-shimmer 1.5s ease-in-out infinite;
+}

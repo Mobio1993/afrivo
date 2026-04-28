@@ -1,0 +1,18 @@
+.main-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: block;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0 0 28px;
+}
+
+@media (max-width: 920px) {
+  .main-content {
+    flex: initial;
+    min-height: auto;
+    overflow: visible;
+    padding: 0 0 18px;
+  }
+}

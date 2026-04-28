@@ -1,0 +1,188 @@
+/* ─────────────────────────────────────────────
+   AFRIVO Topbar — Premium Hotel Management
+───────────────────────────────────────────── */
+
+.topbar {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 22px;
+  border-radius: 20px;
+  border: 1px solid rgba(16, 24, 38, 0.07);
+  background:
+    radial-gradient(circle at 80% 0%, rgba(212, 175, 55, 0.04) 0%, transparent 40%),
+    radial-gradient(circle at 10% 100%, rgba(15, 157, 138, 0.05) 0%, transparent 35%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.97) 0%, rgba(246, 250, 255, 0.94) 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.8) inset,
+    var(--shadow-card);
+}
+
+/* Left — page identity */
+.topbar-layout {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
+  min-width: 0;
+}
+
+.topbar-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.topbar-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--primary);
+  opacity: 0.7;
+  margin-bottom: 3px;
+}
+
+.topbar-eyebrow-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--primary);
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.topbar-title {
+  display: block;
+  font-size: clamp(1.2rem, 2.5vw, 1.65rem);
+  font-weight: 700;
+  color: var(--text-main);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar-subtitle {
+  display: block;
+  margin: 3px 0 0;
+  font-size: 0.76rem;
+  color: var(--text-soft);
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Right — meta zone */
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.topbar-readonly-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.16);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #9a6700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.topbar-date-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 10px;
+  background: rgba(15, 157, 138, 0.07);
+  border: 1px solid rgba(15, 157, 138, 0.13);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--primary-dark);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.topbar-date-chip svg {
+  width: 13px;
+  height: 13px;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+/* Hamburger */
+.topbar-menu-button {
+  display: none;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  background: rgba(15, 23, 40, 0.05);
+  border: 1px solid rgba(15, 23, 40, 0.08);
+  flex-shrink: 0;
+  transition: background 0.16s ease;
+}
+
+.topbar-menu-button:hover {
+  background: rgba(15, 23, 40, 0.09);
+}
+
+.topbar-menu-icon {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 16px;
+}
+
+.topbar-menu-icon span {
+  display: block;
+  height: 1.5px;
+  background: var(--text-main);
+  border-radius: 999px;
+  transition: width 0.16s ease;
+}
+
+.topbar-menu-icon span:nth-child(2) {
+  width: 75%;
+}
+
+@media (max-width: 920px) {
+  .topbar {
+    padding: 14px 16px;
+    border-radius: 18px;
+  }
+
+  .topbar-menu-button {
+    display: inline-flex;
+  }
+
+  .topbar-date-chip {
+    display: none;
+  }
+
+  .topbar-readonly-chip {
+    display: none;
+  }
+
+  .topbar-subtitle {
+    display: none;
+  }
+}

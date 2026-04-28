@@ -1,0 +1,41 @@
+import { Outlet, useNavigate } from "react-router-dom";
+
+import { useAuth } from "../../../auth/AuthContext";
+import { LayoutShell } from "../LayoutShell/LayoutShell";
+import { PageContainer } from "../PageContainer/PageContainer";
+import { Sidebar } from "../Sidebar/Sidebar";
+import { Topbar } from "../Topbar/Topbar";
+import "./AppLayout.css";
+
+export function AppLayout() {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  async function handleLogout() {
+    try {
+      await logout();
+    } catch (error) {
+      console.warn("Erreur logout ignorée:", error);
+    } finally {
+      navigate("/login", { replace: true });
+    }
+  }
+
+  return (
+    <div className="app-layout">
+        <LayoutShell
+        sidebar={
+          <Sidebar
+            user={user}
+            onLogout={handleLogout}
+          />
+        }
+        topbar={<Topbar user={user} />}
+      >
+        <PageContainer>
+          <Outlet />
+        </PageContainer>
+      </LayoutShell>
+    </div>
+  );
+}

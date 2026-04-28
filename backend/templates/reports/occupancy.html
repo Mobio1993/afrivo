@@ -1,0 +1,89 @@
+{% extends "reports/base.html" %}
+
+{% block report_content %}
+    <section class="grid-2">
+        <section class="panel">
+            <h2 class="panel-title">Etat du parc</h2>
+            <p class="panel-copy">Lecture immediate de l'etat actuel des chambres.</p>
+
+            <div class="stack">
+                {% for item in status_cards %}
+                    <article class="item-card">
+                        <strong>{{ item.label }}</strong>
+                        <div class="item-big">{{ item.value }}</div>
+                    </article>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2 class="panel-title">Par type de chambre</h2>
+            <p class="panel-copy">Repartition actuelle de l'occupation par categorie.</p>
+
+            <div class="table-shell">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Total</th>
+                            <th>Disponibles</th>
+                            <th>Occupees</th>
+                            <th>Nettoyage</th>
+                        </tr>
+                </thead>
+                <tbody>
+                    {% for item in room_type_breakdown %}
+                        <tr>
+                            <td data-label="Type">{{ item.name }}</td>
+                            <td data-label="Total">{{ item.total_rooms }}</td>
+                            <td data-label="Disponibles">{{ item.available_count }}</td>
+                            <td data-label="Occupees">{{ item.occupied_count }}</td>
+                            <td data-label="Nettoyage">{{ item.cleaning_count }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr class="table-empty-row">
+                            <td class="table-empty" colspan="5">Aucun type de chambre disponible.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </section>
+    </section>
+
+    <section class="panel">
+        <h2 class="panel-title">Mouvements de sejour</h2>
+        <p class="panel-copy">Historique recent des sejours enregistres sur la periode.</p>
+
+        <div class="table-shell">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Reference</th>
+                        <th>Client</th>
+                        <th>Chambre</th>
+                        <th>Statut</th>
+                        <th>Check-in</th>
+                        <th>Check-out</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in recent_stays %}
+                        <tr>
+                            <td data-label="Reference">{{ item.reference }}</td>
+                            <td data-label="Client">{{ item.guest.full_name }}</td>
+                            <td data-label="Chambre">{{ item.room.number }}</td>
+                            <td data-label="Statut">{{ item.get_status_display }}</td>
+                            <td data-label="Check-in">{{ item.check_in_at|date:"d/m/Y H:i" }}</td>
+                            <td data-label="Check-out">{% if item.check_out_at %}{{ item.check_out_at|date:"d/m/Y H:i" }}{% else %}-{% endif %}</td>
+                        </tr>
+                    {% empty %}
+                        <tr class="table-empty-row">
+                            <td class="table-empty" colspan="6">Aucun sejour sur la periode selectionnee.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+{% endblock %}

@@ -1,0 +1,458 @@
+/* ─────────────────────────────────────────────
+   AFRIVO Sidebar — Premium Hotel Management
+   Dark luxury, deep navy, teal accent
+───────────────────────────────────────────── */
+
+.sidebar {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  padding: 16px 14px;
+  background: linear-gradient(
+    175deg,
+    #0b1220 0%,
+    #0d1626 60%,
+    #0b1421 100%
+  );
+  color: var(--text-light);
+  display: flex;
+  align-self: stretch;
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+
+.sidebar-panel {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 20px;
+  padding: 18px 16px;
+  border-radius: 24px;
+  background:
+    radial-gradient(ellipse at 90% 8%, rgba(15, 157, 138, 0.08) 0%, transparent 45%),
+    radial-gradient(ellipse at 10% 90%, rgba(15, 157, 138, 0.06) 0%, transparent 40%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035) 0%, rgba(255, 255, 255, 0.015) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 24px 48px rgba(4, 8, 20, 0.4);
+}
+
+/* ── Brand block ── */
+.sidebar-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.brand-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+}
+
+.brand-logo-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-logo-mark {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #0f9d8a 0%, #14b8a6 60%, #0c7c6d 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow:
+    0 4px 14px rgba(15, 157, 138, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+.brand-logo-mark svg {
+  width: 20px;
+  height: 20px;
+}
+
+.brand-wordmark {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1;
+}
+
+.brand-name {
+  font-size: 1.3rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #ffffff;
+  line-height: 1;
+}
+
+.brand-tagline {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #0f9d8a;
+  opacity: 0.85;
+  line-height: 1;
+  margin-top: 4px;
+}
+
+/* Hotel tenant pill */
+.brand-hotel-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 6px 10px 6px 8px;
+  border-radius: 10px;
+  background: rgba(15, 157, 138, 0.07);
+  border: 1px solid rgba(15, 157, 138, 0.16);
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.brand-hotel-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4ade80;
+  flex-shrink: 0;
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.6);
+  animation: pulse-dot 2.4s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.brand-hotel-name {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: rgba(15, 157, 138, 0.90);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Close button (mobile) */
+.sidebar .sidebar-close-button {
+  display: none;
+  flex-shrink: 0;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #a5b5cb;
+  transition: background 0.16s ease;
+}
+
+.sidebar .sidebar-close-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.sidebar .sidebar-close-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ── Nav ── */
+.sidebar-nav-region {
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
+  margin-top: 4px;
+}
+
+.sidebar-nav-region::-webkit-scrollbar { width: 4px; }
+.sidebar-nav-region::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.nav-section-label {
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(165, 181, 203, 0.45);
+  padding: 0 10px;
+  margin: 8px 0 6px;
+  display: block;
+}
+
+.nav-list {
+  display: grid;
+  gap: 2px;
+  align-content: start;
+}
+
+.nav-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 13px;
+  color: rgba(200, 215, 235, 0.65);
+  background: transparent;
+  border: 1px solid transparent;
+  font-size: 0.82rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  transition:
+    background 0.17s ease,
+    border-color 0.17s ease,
+    color 0.17s ease,
+    transform 0.17s ease;
+}
+
+.nav-link-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  flex-shrink: 0;
+  transition:
+    background 0.17s ease,
+    border-color 0.17s ease,
+    box-shadow 0.17s ease;
+}
+
+.nav-link-icon svg {
+  width: 14px;
+  height: 14px;
+  opacity: 0.55;
+  transition: opacity 0.17s ease, color 0.17s ease;
+  color: currentColor;
+}
+
+.nav-link-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.nav-link-badge {
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(15, 157, 138, 0.13);
+  color: #0f9d8a;
+  border: 1px solid rgba(15, 157, 138, 0.2);
+  flex-shrink: 0;
+}
+
+/* Hover */
+.nav-link:hover {
+  color: #e9f0ff;
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.07);
+  transform: translateX(2px);
+}
+
+.nav-link:hover .nav-link-icon {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.nav-link:hover .nav-link-icon svg {
+  opacity: 0.85;
+}
+
+/* Active */
+.nav-link.active {
+  color: #ffffff;
+  background: rgba(15, 157, 138, 0.08);
+  border-color: rgba(15, 157, 138, 0.16);
+}
+
+.nav-link.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #0f9d8a, #2dd4bf);
+  box-shadow: 0 0 8px rgba(15, 157, 138, 0.50);
+}
+
+.nav-link.active .nav-link-icon {
+  background: rgba(15, 157, 138, 0.13);
+  border-color: rgba(15, 157, 138, 0.22);
+  box-shadow: 0 3px 10px rgba(15, 157, 138, 0.12);
+}
+
+.nav-link.active .nav-link-icon svg {
+  opacity: 1;
+  color: #0f9d8a;
+}
+
+/* ── Footer ── */
+.sidebar-footer {
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.sidebar-user-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.sidebar-user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #0f9d8a, #0c7c6d);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+  box-shadow: 0 3px 8px rgba(15, 157, 138, 0.3);
+}
+
+.sidebar-user-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.sidebar-user-info strong {
+  display: block;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #e9f0ff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-user-info span {
+  display: block;
+  font-size: 0.62rem;
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(165, 181, 203, 0.55);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-footer-actions {
+  display: grid;
+  gap: 7px;
+}
+
+.sidebar-logout-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  color: rgba(165, 181, 203, 0.75);
+  font-size: 0.78rem;
+  font-weight: 500;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease,
+    border-color 0.16s ease;
+}
+
+.sidebar-logout-button:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.09);
+  border-color: rgba(239, 68, 68, 0.18);
+  color: #fca5a5;
+}
+
+.sidebar-logout-button svg {
+  width: 14px;
+  height: 14px;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+/* ── Mobile ── */
+@media (max-width: 920px) {
+  .sidebar {
+    position: static;
+    height: auto;
+    padding: 14px;
+    border-right: 0;
+    border-bottom: 1px solid rgba(16, 24, 38, 0.08);
+    overflow: visible;
+  }
+
+  .sidebar-panel,
+  .sidebar-nav-region {
+    min-height: auto;
+  }
+
+  .sidebar-nav-region {
+    overflow: visible;
+  }
+
+  .sidebar.sidebar-drawer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: min(290px, calc(100vw - 24px));
+    height: 100vh;
+    height: 100dvh;
+    padding: 14px 12px;
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 0;
+    overflow: hidden;
+    z-index: 200;
+  }
+
+  .sidebar.sidebar-drawer .sidebar-panel,
+  .sidebar.sidebar-drawer .sidebar-nav-region {
+    min-height: 0;
+  }
+
+  .sidebar.sidebar-drawer .sidebar-nav-region {
+    overflow-y: auto;
+  }
+
+  .sidebar.sidebar-drawer .sidebar-close-button {
+    display: inline-flex;
+  }
+}

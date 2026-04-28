@@ -1,0 +1,45 @@
+# ── Python ──────────────────────────────────────────────
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# ── Django ───────────────────────────────────────────────
+*.sqlite3
+staticfiles/
+media/
+.pytest_cache/
+.mypy_cache/
+coverage/
+htmlcov/
+
+# ── Secrets ──────────────────────────────────────────────
+.env
+*.env.local
+*.env.production
+
+# ── Frontend ─────────────────────────────────────────────
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+node_modules/
+dist/
+
+# ── Base de données / Backups ────────────────────────────
+database/backups/*.sql
+database/backups/*.dump
+database/backups/*.gz
+
+# ── OS ───────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE ──────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+.claude/
+*.swp
+*.swo

@@ -1,0 +1,43 @@
+.operations-page .dashboard-hero-aside,
+.operations-page .dashboard-columns,
+.operations-page .dashboard-lower-grid,
+.operations-page .operation-grid {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+}
+
+.operations-page .operations-hero {
+  border-color: rgba(59, 130, 246, 0.1);
+}
+
+.operations-page .dashboard-hero-aside {
+  gap: 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.operations-page .dashboard-columns {
+  gap: 20px;
+  align-items: start;
+  grid-template-columns: minmax(0, 1.04fr) minmax(0, 0.96fr);
+}
+
+.operations-page .dashboard-lower-grid,
+.operations-page .operation-grid {
+  gap: 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.operations-page .operations-tabs-panel,
+.operations-page .operations-form-panel {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(246, 250, 255, 0.9));
+}
+
+@media (max-width: 1080px) {
+  .operations-page .dashboard-columns,
+  .operations-page .dashboard-lower-grid,
+  .operations-page .dashboard-hero-aside,
+  .operations-page .operation-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,80 @@
+{% extends "reports/base.html" %}
+
+{% block report_content %}
+    <section class="grid-2">
+        <section class="panel">
+            <h2 class="panel-title">Modes de paiement</h2>
+            <p class="panel-copy">Repartition des encaissements valides sur la periode selectionnee.</p>
+
+            <div class="stack">
+                {% for item in payment_methods %}
+                    <article class="item-card">
+                        <strong>{{ item.label }}</strong>
+                        <div class="item-big">{{ item.total_amount }}</div>
+                        <div class="item-meta">{{ item.total_count }} paiement(s) valide(s)</div>
+                    </article>
+                {% empty %}
+                    <div class="item-card">Aucun paiement valide sur la periode selectionnee.</div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2 class="panel-title">Origine des revenus</h2>
+            <p class="panel-copy">Lecture des encaissements selon leur source metier.</p>
+
+            <div class="stack">
+                {% for item in source_breakdown %}
+                    <article class="item-card">
+                        <strong>{{ item.title }}</strong>
+                        <div class="item-big">{{ item.amount }}</div>
+                        <div class="item-meta">{{ item.count }} paiement(s)</div>
+                        <div class="item-meta">{{ item.description }}</div>
+                    </article>
+                {% endfor %}
+            </div>
+        </section>
+    </section>
+
+    <section class="panel">
+        <h2 class="panel-title">Transactions recentes</h2>
+        <p class="panel-copy">Derniers mouvements financiers observes sur la periode selectionnee.</p>
+
+        <div class="table-shell">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Reference</th>
+                        <th>Statut</th>
+                        <th>Mode</th>
+                        <th>Montant</th>
+                        <th>Rattachement</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in recent_payments %}
+                        <tr>
+                            <td data-label="Reference">{{ item.reference }}</td>
+                            <td data-label="Statut">{{ item.get_status_display }}</td>
+                            <td data-label="Mode">{{ item.get_method_display }}</td>
+                            <td data-label="Montant">{{ item.amount }}</td>
+                            <td data-label="Rattachement">
+                                {% if item.day_use %}Day use {{ item.day_use.reference }}
+                                {% elif item.stay %}Sejour {{ item.stay.reference }}
+                                {% elif item.booking %}Reservation {{ item.booking.reference }}
+                                {% else %}Non rattache
+                                {% endif %}
+                            </td>
+                            <td data-label="Date">{{ item.paid_at|date:"d/m/Y H:i" }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr class="table-empty-row">
+                            <td class="table-empty" colspan="6">Aucune transaction sur la periode selectionnee.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+{% endblock %}

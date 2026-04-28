@@ -1,0 +1,259 @@
+:root {
+    --hotel-admin-accent: #0f9d8a;
+    --hotel-admin-accent-strong: #0c7c6d;
+    --hotel-admin-surface: #ffffff;
+    --hotel-admin-surface-soft: #f6fafc;
+    --hotel-admin-line: #d7e1ea;
+}
+
+body.login {
+    background:
+        radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 22%),
+        radial-gradient(circle at bottom right, rgba(15, 157, 138, 0.12), transparent 20%),
+        linear-gradient(140deg, #f5f7fb 0%, #edf2f8 52%, #e6eef7 100%);
+}
+
+#header {
+    background: linear-gradient(180deg, var(--hotel-admin-accent), var(--hotel-admin-accent-strong));
+    color: #ffffff;
+}
+
+#branding h1,
+#branding h1 a:link,
+#branding h1 a:visited,
+#user-tools,
+#user-tools a:link,
+#user-tools a:visited {
+    color: #ffffff;
+}
+
+div.breadcrumbs {
+    background: #162234;
+}
+
+.module,
+.inline-group,
+#changelist-filter,
+#changelist-form .actions,
+.submit-row,
+.paginator,
+.object-tools a,
+.object-tools input[type="submit"] {
+    border-radius: 14px;
+}
+
+.module,
+.inline-group,
+#changelist-filter,
+#changelist-form .actions,
+.submit-row {
+    background: var(--hotel-admin-surface);
+    border: 1px solid var(--hotel-admin-line);
+    box-shadow: 0 12px 32px rgba(31, 41, 55, 0.08);
+}
+
+.object-tools a:link,
+.object-tools a:visited,
+input[type="submit"],
+input[type="button"],
+.submit-row input,
+button {
+    background: linear-gradient(180deg, var(--hotel-admin-accent), var(--hotel-admin-accent-strong));
+    border: 0;
+}
+
+.object-tools a:link:hover,
+.object-tools a:visited:hover,
+input[type="submit"]:hover,
+input[type="button"]:hover,
+.submit-row input:hover,
+button:hover {
+    filter: brightness(1.04);
+}
+
+#changelist table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+#changelist table,
+.results table {
+    min-width: 840px;
+}
+
+.aligned label {
+    width: 180px;
+}
+
+.aligned .form-row input,
+.aligned .form-row textarea,
+.aligned .form-row select,
+.aligned .form-row .vTextField,
+.aligned .form-row .vLargeTextField,
+.aligned .form-row .vURLField,
+.aligned .form-row .vIntegerField,
+.aligned .form-row .vDateField,
+.aligned .form-row .vTimeField,
+.aligned .form-row .vForeignKeyRawIdAdminField {
+    max-width: 100%;
+}
+
+.form-row {
+    border-bottom: 1px solid #edf2f7;
+}
+
+.inline-related h3,
+fieldset.module h2 {
+    background: var(--hotel-admin-surface-soft);
+}
+
+@media (max-width: 1024px) {
+    #content {
+        padding: 20px;
+    }
+
+    #changelist-filter {
+        position: static;
+        width: 100%;
+        margin-top: 18px;
+    }
+
+    #changelist {
+        display: grid;
+        gap: 18px;
+    }
+
+    #changelist #toolbar,
+    #changelist .actions,
+    #changelist .results {
+        margin: 0;
+    }
+}
+
+@media (max-width: 767px) {
+    #container {
+        min-width: 0;
+    }
+
+    #header {
+        padding: 14px 16px;
+    }
+
+    #branding,
+    #user-tools {
+        float: none;
+        text-align: left;
+    }
+
+    #content {
+        padding: 14px;
+    }
+
+    .dashboard .module table td,
+    .dashboard .module table th,
+    #changelist table td,
+    #changelist table th {
+        white-space: normal;
+    }
+
+    #changelist-form .results,
+    .results {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    #changelist table,
+    .results table {
+        min-width: 680px;
+    }
+
+    .aligned .form-row,
+    .submit-row {
+        display: block;
+    }
+
+    .aligned label {
+        display: block;
+        float: none;
+        width: auto;
+        margin-bottom: 8px;
+        padding: 0;
+    }
+
+    .aligned .form-row div.help,
+    .aligned .form-row .help,
+    .aligned .form-row p.help,
+    form .aligned p.help,
+    form .aligned div.help {
+        margin-left: 0;
+        padding-left: 0;
+    }
+
+    .aligned .related-widget-wrapper,
+    .aligned .form-row input,
+    .aligned .form-row textarea,
+    .aligned .form-row select {
+        width: 100%;
+    }
+
+    .selector {
+        width: 100%;
+    }
+
+    .selector select {
+        width: 100%;
+        min-height: 160px;
+    }
+
+    .object-tools {
+        float: none;
+        display: grid;
+        gap: 8px;
+        margin: 0 0 16px;
+    }
+
+    .object-tools li {
+        float: none;
+        margin-left: 0;
+    }
+
+    .object-tools a {
+        display: block;
+        text-align: center;
+    }
+
+    .submit-row {
+        display: grid;
+        gap: 10px;
+    }
+
+    .submit-row input,
+    .submit-row a.deletelink {
+        width: 100%;
+        text-align: center;
+        margin: 0;
+        box-sizing: border-box;
+    }
+
+    .login #container {
+        width: min(100% - 24px, 420px);
+        margin: 24px auto;
+    }
+
+    .login #content {
+        padding: 0;
+    }
+
+    .login .form-row {
+        padding: 0;
+        overflow: visible;
+    }
+
+    .login .submit-row {
+        padding: 0;
+        background: transparent;
+        border: 0;
+        box-shadow: none;
+    }
+}

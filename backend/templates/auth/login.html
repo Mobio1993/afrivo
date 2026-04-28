@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Connexion | Hotel Reception App</title>
+    <style>
+        :root {
+            --bg-1: #f5f7fb;
+            --bg-2: #edf2f8;
+            --bg-3: #e6eef7;
+            --surface: rgba(255, 255, 255, 0.9);
+            --surface-strong: rgba(255, 255, 255, 0.97);
+            --surface-soft: #f7faff;
+            --line: rgba(16, 24, 38, 0.08);
+            --text: #142033;
+            --muted: #66758a;
+            --accent: #0f9d8a;
+            --accent-strong: #0c7c6d;
+            --accent-soft: rgba(15, 157, 138, 0.12);
+            --info-soft: rgba(59, 130, 246, 0.12);
+            --danger-bg: rgba(180, 40, 40, 0.08);
+            --danger-line: rgba(180, 40, 40, 0.16);
+            --danger-text: #9f1d1d;
+            --shadow: 0 22px 60px rgba(31, 41, 55, 0.12);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            min-height: 100%;
+        }
+
+        body {
+            font-family: "Segoe UI", Inter, system-ui, sans-serif;
+            color: var(--text);
+            background:
+                radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 22%),
+                radial-gradient(circle at bottom right, rgba(15, 157, 138, 0.12), transparent 20%),
+                linear-gradient(140deg, var(--bg-1) 0%, var(--bg-2) 52%, var(--bg-3) 100%);
+            overflow-x: hidden;
+        }
+
+        body::before,
+        body::after {
+            content: "";
+            position: fixed;
+            border-radius: 999px;
+            pointer-events: none;
+            filter: blur(12px);
+        }
+
+        body::before {
+            top: 6%;
+            right: -120px;
+            width: 340px;
+            height: 340px;
+            background: radial-gradient(circle, rgba(59, 130, 246, 0.16), transparent 62%);
+        }
+
+        body::after {
+            left: -90px;
+            bottom: 5%;
+            width: 280px;
+            height: 280px;
+            background: radial-gradient(circle, rgba(15, 157, 138, 0.14), transparent 64%);
+        }
+
+        .page {
+            position: relative;
+            min-height: 100vh;
+            display: grid;
+            grid-template-columns: minmax(320px, 1.05fr) minmax(340px, 500px);
+            align-items: center;
+            gap: 42px;
+            padding: 40px clamp(18px, 5vw, 72px);
+        }
+
+        .hero {
+            min-width: 0;
+            display: grid;
+            gap: 24px;
+        }
+
+        .hero-badge {
+            width: fit-content;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 16px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.72);
+            border: 1px solid var(--line);
+            color: var(--accent-strong);
+            font-size: 0.82rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            box-shadow: var(--shadow);
+        }
+
+        .hero-badge-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 999px;
+            background: var(--accent);
+        }
+
+        .hero-title {
+            margin: 0;
+            font-size: clamp(2.8rem, 6vw, 5rem);
+            line-height: 0.94;
+            letter-spacing: -0.04em;
+            font-weight: 800;
+            max-width: 720px;
+        }
+
+        .hero-title span {
+            display: block;
+            color: var(--accent-strong);
+        }
+
+        .hero-copy {
+            max-width: 620px;
+            margin: 0;
+            color: var(--muted);
+            font-size: 1.02rem;
+            line-height: 1.85;
+        }
+
+        .hero-points {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 16px;
+            max-width: 780px;
+        }
+
+        .hero-point {
+            padding: 18px;
+            border-radius: 22px;
+            background: var(--surface);
+            border: 1px solid var(--line);
+            box-shadow: var(--shadow);
+        }
+
+        .hero-point strong {
+            display: block;
+            margin-bottom: 10px;
+            color: #162234;
+            font-size: 1rem;
+        }
+
+        .hero-point span {
+            color: var(--muted);
+            font-size: 0.93rem;
+            line-height: 1.7;
+        }
+
+        .login-card {
+            position: relative;
+            padding: 30px;
+            border-radius: 28px;
+            background:
+                radial-gradient(circle at top right, rgba(59, 130, 246, 0.08), transparent 28%),
+                linear-gradient(180deg, var(--surface-strong), var(--surface));
+            border: 1px solid var(--line);
+            box-shadow: var(--shadow);
+            min-width: 0;
+        }
+
+        .card-head {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 24px;
+        }
+
+        .brand-mark {
+            width: 54px;
+            height: 54px;
+            border-radius: 18px;
+            display: grid;
+            place-items: center;
+            background: linear-gradient(160deg, rgba(15, 157, 138, 0.28), rgba(59, 130, 246, 0.2));
+            color: #f3fffd;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+        }
+
+        .brand-text strong {
+            display: block;
+            font-size: 0.92rem;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: #162234;
+        }
+
+        .brand-text span {
+            display: block;
+            margin-top: 4px;
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+
+        .card-title {
+            margin: 0;
+            font-size: 2rem;
+            line-height: 1.05;
+            letter-spacing: -0.03em;
+            color: #0f1728;
+        }
+
+        .card-copy {
+            margin: 12px 0 28px;
+            color: var(--muted);
+            line-height: 1.7;
+            font-size: 0.98rem;
+        }
+
+        .error-box {
+            margin-bottom: 18px;
+            padding: 14px 16px;
+            border-radius: 16px;
+            background: var(--danger-bg);
+            border: 1px solid var(--danger-line);
+            color: var(--danger-text);
+            font-size: 0.94rem;
+            line-height: 1.55;
+        }
+
+        .field-group {
+            margin-bottom: 18px;
+        }
+
+        .field-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+
+        .field-label {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #162234;
+        }
+
+        .field-help {
+            color: var(--muted);
+            font-size: 0.84rem;
+        }
+
+        .input-shell {
+            display: grid;
+            grid-template-columns: 24px 1fr 24px;
+            align-items: center;
+            gap: 12px;
+            min-height: 58px;
+            padding: 0 16px;
+            border-radius: 16px;
+            background: var(--surface-soft);
+            border: 1px solid rgba(16, 24, 38, 0.1);
+            transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+        }
+
+        .input-shell:focus-within {
+            background: rgba(255, 255, 255, 0.94);
+            border-color: rgba(15, 157, 138, 0.42);
+            box-shadow: 0 0 0 5px var(--accent-soft);
+        }
+
+        .field-group.has-errors .input-shell {
+            border-color: rgba(180, 40, 40, 0.35);
+            box-shadow: 0 0 0 4px rgba(180, 40, 40, 0.08);
+        }
+
+        .field-icon,
+        .toggle-password {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            color: #7b8ca5;
+        }
+
+        .toggle-password {
+            border: 0;
+            background: transparent;
+            padding: 0;
+            cursor: pointer;
+        }
+
+        .auth-input {
+            width: 100%;
+            border: 0;
+            outline: 0;
+            background: transparent;
+            color: var(--text);
+            font-size: 1rem;
+            padding: 18px 0;
+        }
+
+        .auth-input::placeholder {
+            color: #8da0b8;
+        }
+
+        .field-errors {
+            margin-top: 8px;
+            color: var(--danger-text);
+            font-size: 0.84rem;
+            line-height: 1.5;
+        }
+
+        .options-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin: 18px 0 24px;
+        }
+
+        .remember-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text);
+            font-size: 0.94rem;
+            cursor: pointer;
+        }
+
+        .remember-input {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--accent-strong);
+        }
+
+        .helper-link {
+            color: var(--accent-strong);
+            text-decoration: none;
+            font-size: 0.92rem;
+        }
+
+        .helper-link:hover {
+            text-decoration: underline;
+        }
+
+        .submit-button {
+            width: 100%;
+            border: 0;
+            border-radius: 16px;
+            padding: 16px 20px;
+            font-size: 1rem;
+            font-weight: 700;
+            color: #ffffff;
+            background: linear-gradient(180deg, var(--accent), var(--accent-strong));
+            cursor: pointer;
+            box-shadow: 0 14px 32px rgba(15, 157, 138, 0.22);
+            transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+        }
+
+        .submit-button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 18px 36px rgba(15, 157, 138, 0.28);
+            filter: brightness(1.03);
+        }
+
+        .card-footer {
+            margin-top: 20px;
+            text-align: center;
+            color: var(--muted);
+            font-size: 0.86rem;
+        }
+
+        @media (max-width: 1040px) {
+            .page {
+                grid-template-columns: 1fr;
+                gap: 28px;
+                padding-top: 32px;
+                padding-bottom: 32px;
+            }
+
+            .hero-points {
+                grid-template-columns: 1fr;
+                max-width: none;
+            }
+
+            .login-card {
+                max-width: 560px;
+                width: 100%;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .page {
+                padding: 18px;
+            }
+
+            .hero-title {
+                font-size: 2.5rem;
+            }
+
+            .hero-copy {
+                font-size: 0.98rem;
+            }
+
+            .login-card {
+                padding: 22px;
+                border-radius: 22px;
+            }
+
+            .options-row {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .field-row {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .input-shell {
+                grid-template-columns: 20px 1fr 20px;
+                gap: 10px;
+                padding: 0 14px;
+            }
+
+            .submit-button,
+            .helper-link {
+                width: 100%;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main class="page">
+        <section class="hero">
+            <div class="hero-badge">
+                <span class="hero-badge-dot"></span>
+                Hotel Reception App
+            </div>
+
+            <h1 class="hero-title">
+                Une connexion
+                <span>claire, moderne et coherente.</span>
+            </h1>
+
+            <p class="hero-copy">
+                Connectez-vous pour retrouver la meme experience visuelle que dans le dashboard,
+                les rapports et les ecrans d'exploitation, avec un acces direct a votre espace
+                de gestion hoteliere.
+            </p>
+
+            <div class="hero-points">
+                <article class="hero-point">
+                    <strong>Theme unifie</strong>
+                    <span>La connexion reprend maintenant la meme palette claire et premium que le reste du produit.</span>
+                </article>
+                <article class="hero-point">
+                    <strong>Acces securise</strong>
+                    <span>Ouvrez votre session pour retrouver vos flux reception, vos rapports et vos actions metier.</span>
+                </article>
+                <article class="hero-point">
+                    <strong>Lecture immediate</strong>
+                    <span>Un ecran d'entree plus propre, plus lisible et plus coherent avec votre interface actuelle.</span>
+                </article>
+            </div>
+        </section>
+
+        <section class="login-card">
+            <div class="card-head">
+                <div class="brand-mark" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="26" height="26" fill="none">
+                        <path d="M7 4H17V7H20V19H4V7H7V4Z" fill="currentColor"/>
+                        <rect x="9" y="9" width="2.5" height="2.5" fill="white"/>
+                        <rect x="12.5" y="9" width="2.5" height="2.5" fill="white"/>
+                        <rect x="9" y="12.5" width="2.5" height="2.5" fill="white"/>
+                        <rect x="12.5" y="12.5" width="2.5" height="2.5" fill="white"/>
+                        <rect x="10.3" y="15.8" width="3.4" height="3.2" fill="white"/>
+                    </svg>
+                </div>
+                <div class="brand-text">
+                    <strong>Hotel</strong>
+                    <span>Connexion securisee</span>
+                </div>
+            </div>
+
+            <h1 class="card-title">Bienvenue</h1>
+            <p class="card-copy">
+                Saisissez vos identifiants pour acceder a l'interface de gestion.
+            </p>
+
+            {% if form.non_field_errors %}
+                <div class="error-box">
+                    {% for error in form.non_field_errors %}
+                        <div>{{ error }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            <form method="post" novalidate>
+                {% csrf_token %}
+
+                <div class="field-group{% if form.username.errors %} has-errors{% endif %}">
+                    <div class="field-row">
+                        <label class="field-label" for="{{ form.username.id_for_label }}">{{ form.username.label }}</label>
+                        <span class="field-help">Obligatoire</span>
+                    </div>
+                    <div class="input-shell">
+                        <span class="field-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
+                                <path d="M12 12C14.4853 12 16.5 9.98528 16.5 7.5C16.5 5.01472 14.4853 3 12 3C9.51472 3 7.5 5.01472 7.5 7.5C7.5 9.98528 9.51472 12 12 12Z" stroke="currentColor" stroke-width="1.8"/>
+                                <path d="M4 20C4 16.6863 7.58172 14 12 14C16.4183 14 20 16.6863 20 20" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                            </svg>
+                        </span>
+                        {{ form.username }}
+                        <span></span>
+                    </div>
+                    {% if form.username.errors %}
+                        <div class="field-errors">
+                            {% for error in form.username.errors %}
+                                <div>{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="field-group{% if form.password.errors %} has-errors{% endif %}">
+                    <div class="field-row">
+                        <label class="field-label" for="{{ form.password.id_for_label }}">{{ form.password.label }}</label>
+                        <span class="field-help">Confidentiel</span>
+                    </div>
+                    <div class="input-shell">
+                        <span class="field-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
+                                <rect x="5" y="10" width="14" height="10" rx="2.5" stroke="currentColor" stroke-width="1.8"/>
+                                <path d="M8 10V7.8C8 5.70132 9.79086 4 12 4C14.2091 4 16 5.70132 16 7.8V10" stroke="currentColor" stroke-width="1.8"/>
+                            </svg>
+                        </span>
+                        {{ form.password }}
+                        <button class="toggle-password" type="button" aria-label="Afficher ou masquer le mot de passe" data-password-toggle>
+                            <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
+                                <path d="M3 3L21 21" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                                <path d="M10.6 10.6C10.23 10.97 10 11.47 10 12C10 13.1 10.9 14 12 14C12.53 14 13.03 13.77 13.4 13.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                                <path d="M9.62 5.23C10.39 4.98 11.18 4.85 12 4.85C16.44 4.85 20.17 9.19 20.89 12C20.57 13.22 19.72 14.72 18.44 16M14.38 18.77C13.61 19.02 12.82 19.15 12 19.15C7.56 19.15 3.83 14.81 3.11 12C3.48 10.58 4.54 8.8 6.18 7.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                    </div>
+                    {% if form.password.errors %}
+                        <div class="field-errors">
+                            {% for error in form.password.errors %}
+                                <div>{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="options-row">
+                    <label class="remember-label" for="{{ form.remember_me.id_for_label }}">
+                        {{ form.remember_me }}
+                        <span>{{ form.remember_me.label }}</span>
+                    </label>
+                    <a class="helper-link" href="/admin/password_change/">Mot de passe oublie ?</a>
+                </div>
+
+                {% if next %}
+                    <input type="hidden" name="next" value="{{ next }}">
+                {% endif %}
+
+                <button class="submit-button" type="submit">Se connecter</button>
+            </form>
+
+            <div class="card-footer">
+                Acces protege pour l'administration et la reception.
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const toggleButton = document.querySelector("[data-password-toggle]");
+        const passwordField = document.getElementById("id_password");
+
+        if (toggleButton && passwordField) {
+            toggleButton.addEventListener("click", function () {
+                passwordField.type = passwordField.type === "password" ? "text" : "password";
+            });
+        }
+    </script>
+</body>
+</html>

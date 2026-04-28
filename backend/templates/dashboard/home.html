@@ -1,0 +1,1202 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ page_title }} | Hotel Reception App</title>
+    <style>
+        :root {
+            --bg-1: #f5f7fb;
+            --bg-2: #edf2f8;
+            --bg-3: #e6eef7;
+            --sidebar: #101826;
+            --surface: rgba(255, 255, 255, 0.84);
+            --surface-strong: rgba(255, 255, 255, 0.96);
+            --surface-soft: #f7faff;
+            --line: rgba(16, 24, 38, 0.08);
+            --text: #142033;
+            --muted: #66758a;
+            --accent: #0f9d8a;
+            --accent-strong: #0c7c6d;
+            --accent-soft: rgba(15, 157, 138, 0.12);
+            --info: #3b82f6;
+            --success: #12b981;
+            --warning: #f59e0b;
+            --shadow: 0 22px 60px rgba(31, 41, 55, 0.12);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: "Segoe UI", Inter, system-ui, sans-serif;
+            color: var(--text);
+            background:
+                radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 22%),
+                radial-gradient(circle at bottom right, rgba(15, 157, 138, 0.12), transparent 20%),
+                linear-gradient(140deg, var(--bg-1) 0%, var(--bg-2) 52%, var(--bg-3) 100%);
+            overflow-x: hidden;
+        }
+
+        .app-shell {
+            min-height: 100vh;
+            display: grid;
+            grid-template-columns: 310px 1fr;
+        }
+
+        .sidebar {
+            padding: 24px 18px;
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 18%),
+                var(--sidebar);
+            border-right: 1px solid rgba(255, 255, 255, 0.06);
+            color: #eef4ff;
+            min-width: 0;
+        }
+
+        .sidebar-brand,
+        .brand-block {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 12px 12px 22px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .eyebrow {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 12px;
+            border-radius: 999px;
+            background: rgba(15, 157, 138, 0.16);
+            color: #d7fff9;
+            font-size: 0.8rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .brand-mark {
+            width: 54px;
+            height: 54px;
+            border-radius: 18px;
+            display: grid;
+            place-items: center;
+            background: linear-gradient(160deg, rgba(15, 157, 138, 0.28), rgba(59, 130, 246, 0.2));
+            color: #f3fffd;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+        }
+
+        .brand-block h1 {
+            margin: 0;
+            font-size: clamp(1.8rem, 4vw, 2.6rem);
+            line-height: 1;
+        }
+
+        .brand-block p {
+            margin: 8px 0 0;
+            color: #9fb0c7;
+            line-height: 1.7;
+        }
+
+        .director-card,
+        .user-card {
+            margin-top: 22px;
+            padding: 18px;
+            border-radius: 22px;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.03));
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .director-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: #d8fff7;
+            font-size: 0.82rem;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+        }
+
+        .director-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 999px;
+            background: var(--success);
+        }
+
+        .director-name,
+        .user-card strong {
+            margin: 14px 0 6px;
+            font-size: 1.4rem;
+            font-weight: 700;
+            display: block;
+        }
+
+        .director-role,
+        .user-card span {
+            margin: 0;
+            color: #a5b5cb;
+            line-height: 1.6;
+            font-size: 0.94rem;
+            display: block;
+        }
+
+        .sidebar-section {
+            margin-top: 24px;
+        }
+
+        .sidebar-title {
+            margin: 0 0 12px;
+            padding: 0 12px;
+            color: #8fa2bd;
+            font-size: 0.82rem;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+        }
+
+        .sidebar-nav,
+        .nav-list {
+            display: grid;
+            gap: 8px;
+        }
+
+        .sidebar-link,
+        .nav-link {
+            display: block;
+            padding: 14px 14px;
+            border-radius: 16px;
+            color: #f3f7ff;
+            text-decoration: none;
+            border: 1px solid transparent;
+            background: transparent;
+            transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+        }
+
+        .sidebar-link:hover,
+        .sidebar-link.active,
+        .nav-link:hover,
+        .nav-link.active {
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba(255, 255, 255, 0.08);
+            transform: translateX(2px);
+        }
+
+        .sidebar-link.active,
+        .nav-link.active {
+            box-shadow: inset 3px 0 0 var(--accent);
+        }
+
+        .sidebar-link strong,
+        .nav-link strong {
+            display: block;
+            font-size: 0.96rem;
+        }
+
+        .sidebar-link span,
+        .nav-link span {
+            display: block;
+            margin-top: 4px;
+            color: #9bb0cb;
+            font-size: 0.86rem;
+        }
+
+        .sidebar-actions {
+            display: grid;
+            gap: 10px;
+            margin-top: 26px;
+        }
+
+        .sidebar-button,
+        .ghost-button,
+        .primary-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 44px;
+            padding: 0 14px;
+            border-radius: 14px;
+            text-decoration: none;
+            color: #eef5ff;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.04);
+            cursor: pointer;
+            font: inherit;
+        }
+
+        .sidebar-button.primary,
+        .primary-button {
+            background: linear-gradient(180deg, var(--accent), var(--accent-strong));
+            border-color: transparent;
+            color: #ffffff;
+            font-weight: 700;
+        }
+
+        .main {
+            padding: 24px;
+            min-width: 0;
+        }
+
+        .main-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 18px;
+            padding: 6px 2px 22px;
+        }
+
+        .main-title {
+            margin: 0;
+            font-size: clamp(2rem, 4vw, 3.5rem);
+            line-height: 0.98;
+            letter-spacing: -0.04em;
+        }
+
+        .main-copy {
+            margin: 14px 0 0;
+            max-width: 780px;
+            color: var(--muted);
+            font-size: 1rem;
+            line-height: 1.8;
+        }
+
+        .status-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            border-radius: 999px;
+            background: var(--accent-soft);
+            border: 1px solid rgba(15, 157, 138, 0.18);
+            color: var(--accent-strong);
+            font-weight: 600;
+            max-width: 100%;
+        }
+
+        .header-tools {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .period-filter {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.72);
+            border: 1px solid var(--line);
+            box-shadow: var(--shadow);
+            max-width: 100%;
+        }
+
+        .period-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 40px;
+            padding: 0 14px;
+            border-radius: 999px;
+            color: var(--muted);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .period-link.active {
+            background: linear-gradient(180deg, var(--accent), var(--accent-strong));
+            color: #ffffff;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            gap: 22px;
+        }
+
+        .hero-grid,
+        .panel-grid,
+        .triple-grid,
+        .finance-grid,
+        .chart-grid {
+            display: grid;
+            gap: 22px;
+        }
+
+        .hero-grid {
+            grid-template-columns: 1.2fr 0.8fr;
+        }
+
+        .panel-grid {
+            grid-template-columns: 1.2fr 0.8fr;
+        }
+
+        .triple-grid {
+            grid-template-columns: 1fr 1fr 1fr;
+        }
+
+        .finance-grid {
+            grid-template-columns: 1.1fr 0.9fr;
+        }
+
+        .chart-grid {
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .hero-card,
+        .kpi-card,
+        .panel {
+            border: 1px solid var(--line);
+            border-radius: 24px;
+            background: var(--surface);
+            backdrop-filter: blur(18px);
+            box-shadow: var(--shadow);
+            min-width: 0;
+        }
+
+        .hero-card,
+        .panel,
+        .kpi-card {
+            padding: 24px;
+        }
+
+        .hero-card {
+            background:
+                radial-gradient(circle at top right, rgba(59, 130, 246, 0.08), transparent 24%),
+                linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.82));
+        }
+
+        .hero-card h3,
+        .panel-title {
+            margin: 0 0 6px;
+            font-size: 1.2rem;
+        }
+
+        .hero-card p,
+        .panel-copy {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.7;
+        }
+
+        .hero-highlight {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+            margin-top: 20px;
+        }
+
+        .highlight-box,
+        .metric-box,
+        .mix-item,
+        .note-item,
+        .action-item,
+        .payment-item {
+            padding: 16px;
+            border-radius: 18px;
+            background: var(--surface-soft);
+            border: 1px solid rgba(16, 24, 38, 0.06);
+        }
+
+        .highlight-box strong,
+        .metric-box strong {
+            display: block;
+            font-size: 1.7rem;
+            margin-bottom: 8px;
+            color: #0f1728;
+        }
+
+        .highlight-box span,
+        .metric-box span,
+        .mix-item span,
+        .note-item,
+        .action-item span,
+        .payment-item span {
+            color: var(--muted);
+            font-size: 0.92rem;
+            line-height: 1.6;
+        }
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 16px;
+        }
+
+        .finance-cards {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 16px;
+        }
+
+        .kpi-card:nth-child(1) {
+            background: linear-gradient(180deg, rgba(18, 185, 129, 0.08), rgba(255, 255, 255, 0.82));
+        }
+
+        .kpi-card:nth-child(2) {
+            background: linear-gradient(180deg, rgba(59, 130, 246, 0.08), rgba(255, 255, 255, 0.82));
+        }
+
+        .kpi-card:nth-child(3) {
+            background: linear-gradient(180deg, rgba(245, 158, 11, 0.08), rgba(255, 255, 255, 0.82));
+        }
+
+        .kpi-card:nth-child(4) {
+            background: linear-gradient(180deg, rgba(15, 157, 138, 0.08), rgba(255, 255, 255, 0.82));
+        }
+
+        .kpi-label {
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+
+        .kpi-value {
+            margin: 14px 0 10px;
+            font-size: clamp(2rem, 3vw, 2.8rem);
+            line-height: 1;
+            font-weight: 800;
+            color: #0f1728;
+        }
+
+        .kpi-meta {
+            color: #55657a;
+            font-size: 0.9rem;
+        }
+
+        .section-stack {
+            display: grid;
+            gap: 18px;
+        }
+
+        .alert-list {
+            display: grid;
+            gap: 12px;
+            margin-top: 18px;
+        }
+
+        .alert-item {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            gap: 14px;
+            align-items: center;
+            padding: 16px;
+            border-radius: 18px;
+            background: var(--surface-soft);
+            border: 1px solid rgba(16, 24, 38, 0.06);
+        }
+
+        .alert-item.high {
+            background: rgba(245, 158, 11, 0.08);
+            border-color: rgba(245, 158, 11, 0.18);
+        }
+
+        .alert-item.medium {
+            background: rgba(59, 130, 246, 0.08);
+            border-color: rgba(59, 130, 246, 0.16);
+        }
+
+        .alert-item.low {
+            background: rgba(15, 157, 138, 0.08);
+            border-color: rgba(15, 157, 138, 0.16);
+        }
+
+        .alert-count {
+            min-width: 52px;
+            height: 52px;
+            padding: 0 10px;
+            border-radius: 16px;
+            display: grid;
+            place-items: center;
+            font-size: 1.15rem;
+            font-weight: 800;
+            color: #0f1728;
+            background: rgba(255, 255, 255, 0.72);
+        }
+
+        .alert-copy strong {
+            display: block;
+            margin-bottom: 4px;
+            color: #162234;
+        }
+
+        .alert-copy span {
+            color: var(--muted);
+            font-size: 0.92rem;
+            line-height: 1.6;
+        }
+
+        .alert-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 42px;
+            padding: 0 14px;
+            border-radius: 14px;
+            text-decoration: none;
+            color: #ffffff;
+            background: linear-gradient(180deg, var(--accent), var(--accent-strong));
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .section-block h4 {
+            margin: 0 0 12px;
+            font-size: 1rem;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .mix-list,
+        .notes-list,
+        .actions-list,
+        .payment-list,
+        .activity-list {
+            display: grid;
+            gap: 12px;
+        }
+
+        .mix-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .mix-item strong,
+        .action-item strong,
+        .payment-item strong {
+            display: block;
+            margin-bottom: 4px;
+            color: #162234;
+        }
+
+        .mix-count {
+            min-width: 42px;
+            height: 42px;
+            border-radius: 14px;
+            display: grid;
+            place-items: center;
+            background: rgba(59, 130, 246, 0.1);
+            color: var(--info);
+            font-weight: 700;
+        }
+
+        .payment-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            flex-wrap: wrap;
+        }
+
+        .chart-card {
+            display: grid;
+            gap: 16px;
+        }
+
+        .chart-bars {
+            height: 220px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(36px, 1fr));
+            align-items: end;
+            gap: 10px;
+            padding-top: 8px;
+            overflow-x: auto;
+            overflow-y: hidden;
+        }
+
+        .chart-col {
+            display: grid;
+            gap: 8px;
+            align-items: end;
+            justify-items: center;
+        }
+
+        .chart-bar-wrap {
+            width: 100%;
+            height: 180px;
+            display: flex;
+            align-items: end;
+        }
+
+        .chart-bar {
+            width: 100%;
+            border-radius: 14px 14px 10px 10px;
+            background: linear-gradient(180deg, var(--accent), var(--accent-strong));
+            min-height: 10px;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+        }
+
+        .chart-value {
+            font-size: 0.82rem;
+            color: #162234;
+            font-weight: 700;
+            text-align: center;
+        }
+
+        .chart-label {
+            font-size: 0.78rem;
+            color: var(--muted);
+            text-align: center;
+        }
+
+        .channel-item {
+            padding: 16px;
+            border-radius: 18px;
+            background: var(--surface-soft);
+            border: 1px solid rgba(16, 24, 38, 0.06);
+        }
+
+        .channel-item strong {
+            display: block;
+            margin-bottom: 6px;
+            color: #162234;
+        }
+
+        .channel-amount {
+            font-size: 1.6rem;
+            font-weight: 800;
+            color: var(--accent-strong);
+            margin-bottom: 6px;
+        }
+
+        .channel-meta {
+            color: var(--muted);
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        .payment-amount {
+            min-width: 84px;
+            text-align: right;
+            font-weight: 700;
+            color: var(--accent-strong);
+        }
+
+        .actions-list a {
+            color: inherit;
+            text-decoration: none;
+            display: block;
+            transition: transform 0.16s ease, background 0.16s ease;
+        }
+
+        .actions-list a:hover {
+            transform: translateY(-1px);
+        }
+
+        .activity-item {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 14px;
+            align-items: start;
+            padding: 16px;
+            border-radius: 18px;
+            background: var(--surface-soft);
+            border: 1px solid rgba(16, 24, 38, 0.06);
+        }
+
+        .activity-badge {
+            min-width: 52px;
+            min-height: 52px;
+            padding: 8px 10px;
+            border-radius: 16px;
+            display: grid;
+            place-items: center;
+            text-align: center;
+            background: rgba(59, 130, 246, 0.1);
+            color: var(--info);
+            font-size: 0.78rem;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+
+        .activity-copy strong {
+            display: block;
+            margin-bottom: 4px;
+            color: #162234;
+        }
+
+        .activity-copy p {
+            margin: 0;
+            color: var(--muted);
+            font-size: 0.92rem;
+            line-height: 1.6;
+        }
+
+        .activity-meta {
+            margin-top: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            color: var(--muted);
+            font-size: 0.84rem;
+        }
+
+        .activity-meta a {
+            color: var(--accent-strong);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .activity-meta a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 1240px) {
+            .kpi-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .finance-cards {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .triple-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 980px) {
+            .app-shell {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                border-right: 0;
+                border-bottom: 1px solid var(--line);
+            }
+
+            .sidebar-brand {
+                flex-wrap: wrap;
+            }
+
+            .hero-grid,
+            .panel-grid,
+            .finance-grid,
+            .chart-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 720px) {
+            .main {
+                padding: 18px;
+            }
+
+            .main-header {
+                flex-direction: column;
+            }
+
+            .header-tools {
+                justify-content: flex-start;
+                width: 100%;
+            }
+
+            .kpi-grid,
+            .finance-cards,
+            .metrics-grid,
+            .hero-highlight {
+                grid-template-columns: 1fr;
+            }
+
+            .period-filter {
+                width: 100%;
+                overflow-x: auto;
+                overflow-y: hidden;
+                justify-content: flex-start;
+            }
+
+            .period-link {
+                white-space: nowrap;
+                flex: 0 0 auto;
+            }
+
+            .status-chip {
+                width: 100%;
+            }
+
+            .alert-item,
+            .activity-item {
+                grid-template-columns: 1fr;
+            }
+
+            .payment-item,
+            .mix-item {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .alert-link,
+            .payment-amount {
+                width: 100%;
+                text-align: left;
+            }
+
+            .chart-bars {
+                display: inline-grid;
+                grid-auto-flow: column;
+                grid-auto-columns: minmax(36px, 1fr);
+                grid-template-columns: none;
+                width: max-content;
+                min-width: 100%;
+                padding-bottom: 6px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="brand-block sidebar-brand">
+                <div class="brand-mark" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="none">
+                        <path d="M7 4H17V7H20V19H4V7H7V4Z" fill="currentColor"/>
+                        <rect x="9" y="9" width="2.5" height="2.5" fill="white"/>
+                        <rect x="12.5" y="9" width="2.5" height="2.5" fill="white"/>
+                        <rect x="9" y="12.5" width="2.5" height="2.5" fill="white"/>
+                        <rect x="12.5" y="12.5" width="2.5" height="2.5" fill="white"/>
+                        <rect x="10.3" y="15.8" width="3.4" height="3.2" fill="white"/>
+                    </svg>
+                </div>
+                <div>
+                    <span class="eyebrow">React Frontend</span>
+                    <h1>Hotel Reception App</h1>
+                    <p>Frontend separe de Django, pret pour une vraie SPA metier.</p>
+                </div>
+            </div>
+
+            <div class="director-card user-card">
+                <div class="director-label">
+                    <span class="director-dot"></span>
+                    Session active
+                </div>
+                <div class="director-name">{{ user_first_name }}</div>
+                <p class="director-role">{{ user_role }}</p>
+            </div>
+
+            <section class="sidebar-section">
+                <h2 class="sidebar-title">Navigation</h2>
+                <nav class="sidebar-nav nav-list">
+                    {% for item in sidebar_links %}
+                        <a class="sidebar-link nav-link{% if item.active %} active{% endif %}" href="{{ item.url }}">
+                            <strong>{{ item.title }}</strong>
+                            <span>{{ item.subtitle }}</span>
+                        </a>
+                    {% endfor %}
+                </nav>
+            </section>
+
+            <div class="sidebar-actions">
+                <a class="sidebar-button ghost-button" href="/admin/">Admin Django</a>
+                <form method="post" action="{% url 'logout' %}">
+                    {% csrf_token %}
+                    <button class="sidebar-button primary primary-button" type="submit">Se deconnecter</button>
+                </form>
+            </div>
+        </aside>
+
+        <main class="main">
+            <header class="main-header">
+                <div>
+                    <h2 class="main-title">Tableau de bord direction</h2>
+                    <p class="main-copy">
+                        Vue d'ensemble des informations qu'un directeur d'hotel doit suivre en priorite :
+                        accueil du jour, exploitation des chambres, encaissements et rythme de l'activite.
+                    </p>
+                </div>
+                <div class="header-tools">
+                    <nav class="period-filter" aria-label="Filtre de periode">
+                        {% for option in period_options %}
+                            <a class="period-link{% if option.active %} active{% endif %}" href="?period={{ option.value }}">{{ option.label }}</a>
+                        {% endfor %}
+                    </nav>
+                    <div class="status-chip">
+                        <span>{{ selected_period_label }} - {{ status_summary }}</span>
+                    </div>
+                </div>
+            </header>
+
+            <div class="dashboard-grid">
+                <section class="hero-grid">
+                    <section class="hero-card">
+                        <h3>Pilotage reception</h3>
+                        <p>
+                            Le tableau de bord rassemble maintenant les reservations, les sejours,
+                            les day use et les paiements dans une seule vue exploitable pour la direction.
+                        </p>
+                        <p style="margin-top: 10px;">{{ period_subtitle }}</p>
+
+                        <div class="hero-highlight">
+                            {% for item in spotlight_cards %}
+                                <article class="highlight-box">
+                                    <strong>{{ item.value }}</strong>
+                                    <span>{{ item.title }} - {{ item.meta }}</span>
+                                </article>
+                            {% endfor %}
+                        </div>
+                    </section>
+
+                    <aside class="panel">
+                        <h3 class="panel-title">Focus du jour</h3>
+                        <p class="panel-copy">
+                            Les cartes ci-dessous donnent une lecture rapide de l'accueil, de l'occupation et des flux courts.
+                        </p>
+
+                        <div class="notes-list">
+                            <div class="note-item">Arrivees a traiter aujourd'hui : surveiller les reservations confirmees.</div>
+                            <div class="note-item">Departs du jour : verifier les check-out a cloturer et le nettoyage a lancer.</div>
+                            <div class="note-item">Day use : s'assurer que le paiement est complet avant toute entree.</div>
+                        </div>
+                    </aside>
+                </section>
+
+                <section class="panel">
+                    <h3 class="panel-title">Alertes prioritaires</h3>
+                    <p class="panel-copy">
+                        Les points ci-dessous demandent une attention immediate pour proteger l'exploitation et la qualite d'accueil.
+                    </p>
+
+                    <div class="alert-list">
+                        {% for alert in alerts %}
+                            <div class="alert-item {{ alert.level }}">
+                                <div class="alert-count">{{ alert.count }}</div>
+                                <div class="alert-copy">
+                                    <strong>{{ alert.title }}</strong>
+                                    <span>{{ alert.description }}</span>
+                                </div>
+                                <a class="alert-link" href="{{ alert.url }}">{{ alert.action_label }}</a>
+                            </div>
+                        {% empty %}
+                            <div class="note-item">Aucune alerte prioritaire pour le moment. L'exploitation est sous controle.</div>
+                        {% endfor %}
+                    </div>
+                </section>
+
+                <section class="kpi-grid">
+                    {% for card in kpi_cards %}
+                        <article class="kpi-card">
+                            <div class="kpi-label">{{ card.label }}</div>
+                            <div class="kpi-value">{{ card.value }}</div>
+                            <div class="kpi-meta">{{ card.meta }}</div>
+                        </article>
+                    {% endfor %}
+                </section>
+
+                <section class="panel">
+                    <h3 class="panel-title">Activite recente</h3>
+                    <p class="panel-copy">
+                        Les derniers evenements critiques de l'hotel pour suivre le rythme reel de l'exploitation.
+                    </p>
+
+                    <div class="activity-list">
+                        {% for item in recent_activity %}
+                            <article class="activity-item">
+                                <div class="activity-badge">{{ item.label }}</div>
+                                <div class="activity-copy">
+                                    <strong>{{ item.title }}</strong>
+                                    <p>{{ item.description }}</p>
+                                    <div class="activity-meta">
+                                        <span>{{ item.actor }} - {{ item.time|date:"d/m/Y H:i" }}</span>
+                                        <a href="{{ item.url }}">Voir l'historique</a>
+                                    </div>
+                                </div>
+                            </article>
+                        {% empty %}
+                            <div class="note-item">Aucune activite recente n'a encore ete historisee.</div>
+                        {% endfor %}
+                    </div>
+                </section>
+
+                <section class="finance-grid">
+                    <section class="panel">
+                        <h3 class="panel-title">Indicateurs financiers</h3>
+                        <p class="panel-copy">
+                            Lecture financiere synthesee pour suivre les encaissements et les points a regulariser.
+                        </p>
+
+                        <div class="finance-cards">
+                            {% for card in financial_cards %}
+                                <article class="kpi-card">
+                                    <div class="kpi-label">{{ card.label }}</div>
+                                    <div class="kpi-value">{{ card.value }}</div>
+                                    <div class="kpi-meta">{{ card.meta }}</div>
+                                </article>
+                            {% endfor %}
+                        </div>
+                    </section>
+
+                    <aside class="panel">
+                        <h3 class="panel-title">Encaissements par flux</h3>
+                        <p class="panel-copy">
+                            Repartition des revenus selon leur origine metier.
+                        </p>
+
+                        <div class="payment-list">
+                            {% for item in payment_channels %}
+                                <article class="channel-item">
+                                    <strong>{{ item.title }}</strong>
+                                    <div class="channel-amount">{{ item.amount }}</div>
+                                    <div class="channel-meta">{{ item.count }} paiement(s) valide(s)</div>
+                                    <div class="channel-meta">{{ item.description }}</div>
+                                </article>
+                            {% endfor %}
+                        </div>
+                    </aside>
+                </section>
+
+                <section class="chart-grid">
+                    {% for chart in chart_cards %}
+                        <section class="panel chart-card">
+                            <div>
+                                <h3 class="panel-title">{{ chart.title }}</h3>
+                                <p class="panel-copy">{{ chart.subtitle }}</p>
+                            </div>
+
+                            <div class="chart-bars">
+                                {% for item in chart.items %}
+                                    <div class="chart-col">
+                                        <div class="chart-value">{{ item.display_value }}</div>
+                                        <div class="chart-bar-wrap">
+                                            <div class="chart-bar" style="height: {{ item.height }}%;"></div>
+                                        </div>
+                                        <div class="chart-label">{{ item.label }}</div>
+                                    </div>
+                                {% empty %}
+                                    <div class="note-item">{{ chart.empty_label }}</div>
+                                {% endfor %}
+                            </div>
+                        </section>
+                    {% endfor %}
+                </section>
+
+                <section class="panel-grid">
+                    <section class="panel">
+                        <h3 class="panel-title">Synthese operationnelle</h3>
+                        <p class="panel-copy">
+                            Les indicateurs utiles pour piloter l'activite temps reel sans repasser par l'admin brut.
+                        </p>
+
+                        <div class="section-stack">
+                            {% for card in operations_cards %}
+                                <section class="section-block">
+                                    <h4>{{ card.title }}</h4>
+                                    <div class="metrics-grid">
+                                        {% for item in card.items %}
+                                            <article class="metric-box">
+                                                <strong>{{ item.value }}</strong>
+                                                <span>{{ item.label }}</span>
+                                            </article>
+                                        {% endfor %}
+                                    </div>
+                                </section>
+                            {% endfor %}
+                        </div>
+                    </section>
+
+                    <aside class="panel">
+                        <h3 class="panel-title">Mix de chambres</h3>
+                        <p class="panel-copy">
+                            Repartition actuelle des types de chambres dans l'inventaire actif.
+                        </p>
+
+                        <div class="mix-list">
+                            {% for item in room_mix %}
+                                <div class="mix-item">
+                                    <div>
+                                        <strong>{{ item.name }}</strong>
+                                        <span>Code {{ item.code }}</span>
+                                    </div>
+                                    <div class="mix-count">{{ item.room_count }}</div>
+                                </div>
+                            {% empty %}
+                                <div class="note-item">Aucun type de chambre actif n'est encore configure.</div>
+                            {% endfor %}
+                        </div>
+                    </aside>
+                </section>
+
+                <section class="triple-grid">
+                    {% for panel in business_panels %}
+                        <section class="panel">
+                            <h3 class="panel-title">{{ panel.title }}</h3>
+                            <p class="panel-copy">
+                                Lecture complementaire utile pour la direction et le suivi quotidien.
+                            </p>
+
+                            <div class="metrics-grid">
+                                {% for item in panel.items %}
+                                    <article class="metric-box">
+                                        <strong>{{ item.value }}</strong>
+                                        <span>{{ item.label }}</span>
+                                    </article>
+                                {% endfor %}
+                            </div>
+                        </section>
+                    {% endfor %}
+
+                    <section class="panel">
+                        <h3 class="panel-title">Modes de paiement</h3>
+                        <p class="panel-copy">
+                            Repartition des encaissements deja payes, utile pour lire le mix de paiement.
+                        </p>
+
+                        <div class="payment-list">
+                            {% for item in payment_mix %}
+                                <div class="payment-item">
+                                    <div>
+                                        <strong>{{ item.method }}</strong>
+                                        <span>{{ item.total }} paiement(s) valide(s)</span>
+                                    </div>
+                                    <div class="payment-amount">{{ item.amount }}</div>
+                                </div>
+                            {% empty %}
+                                <div class="note-item">Aucun paiement valide n'a encore ete enregistre.</div>
+                            {% endfor %}
+                        </div>
+                    </section>
+                </section>
+
+                <section class="panel-grid">
+                    <section class="panel">
+                        <h3 class="panel-title">Actions rapides</h3>
+                        <p class="panel-copy">
+                            Raccourcis utiles pour agir vite sur les flux reception et les encaissements.
+                        </p>
+
+                        <div class="actions-list">
+                            {% for action in quick_actions %}
+                                <a class="action-item" href="{{ action.url }}">
+                                    <strong>{{ action.title }}</strong>
+                                    <span>{{ action.description }}</span>
+                                </a>
+                            {% endfor %}
+                        </div>
+                    </section>
+
+                    <aside class="panel">
+                        <h3 class="panel-title">Notes de direction</h3>
+                        <p class="panel-copy">
+                            Points utiles pour comprendre l'etat actuel du produit et les prochaines priorites.
+                        </p>
+
+                        <div class="notes-list">
+                            {% for note in director_notes %}
+                                <div class="note-item">{{ note }}</div>
+                            {% endfor %}
+                        </div>
+                    </aside>
+                </section>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

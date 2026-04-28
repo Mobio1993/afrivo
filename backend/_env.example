@@ -1,0 +1,10 @@
+# ─────────────────────────────────────────────
+# AFRIVO — Variables d'environnement
+# Copier en .env.local et adapter
+# ─────────────────────────────────────────────
+
+# URL de base de l'API Django (sans slash final)
+VITE_API_BASE_URL=http://127.0.0.1:8000
+
+# Nom de l'hôtel affiché dans la sidebar (fallback si non retourné par l'API)
+VITE_HOTEL_NAME=Grand Hôtel AFRIVO
