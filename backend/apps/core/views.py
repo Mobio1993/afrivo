@@ -53,6 +53,7 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         total_rooms = Room.objects.count()
         available_rooms = Room.objects.filter(status=Room.Status.AVAILABLE, is_active=True).count()
         occupied_rooms = Room.objects.filter(status=Room.Status.OCCUPIED, is_active=True).count()
+        reserved_rooms = Room.objects.filter(status=Room.Status.RESERVED, is_active=True).count()
         cleaning_rooms = Room.objects.filter(status=Room.Status.CLEANING, is_active=True).count()
         out_of_service_rooms = Room.objects.filter(status=Room.Status.OUT_OF_SERVICE).count()
 
@@ -328,6 +329,7 @@ class DashboardView(LoginRequiredMixin, TemplateView):
                         "items": [
                             {"label": "Disponibles", "value": available_rooms},
                             {"label": "Occupees", "value": occupied_rooms},
+                            {"label": "Reservees", "value": reserved_rooms},
                             {"label": "En nettoyage", "value": cleaning_rooms},
                             {"label": "Hors service", "value": out_of_service_rooms},
                         ],

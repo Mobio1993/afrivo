@@ -121,7 +121,16 @@ Le refresh token est ajoute a la blacklist, puis les cookies d'authentification 
 |---------|----------|-------------|
 | GET | `/api/billing/invoices/` | Liste des factures |
 | POST | `/api/billing/invoices/` | Creer une facture |
-| GET | `/api/billing/payments/` | Liste des paiements |
+
+### Paiements
+
+| Methode | Endpoint | Description |
+|---------|----------|-------------|
+| GET | `/api/payments/` | Liste des paiements |
+| POST | `/api/payments/` | Enregistrer un paiement |
+| POST | `/api/payments/{id}/confirm/` | Confirmer un paiement |
+| POST | `/api/payments/{id}/cancel/` | Annuler un paiement |
+| GET | `/api/payments/summary/` | Resume des encaissements |
 
 ### Consommations
 

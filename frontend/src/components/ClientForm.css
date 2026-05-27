@@ -1,0 +1,380 @@
+/* ── STRUCTURE LAYOUT ── */
+.cf-premium {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  gap: 0;
+}
+
+/* ── ZONE 1 : HEADER IDENTITÉ DYNAMIQUE ── */
+.cf-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 0.5px solid var(--border-soft);
+  background: var(--bg-card);
+  flex-shrink: 0;
+}
+
+.cf-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #0f9d8a, #2dd4bf);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  flex-shrink: 0;
+  letter-spacing: 0.03em;
+}
+
+.cf-header-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.cf-header-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+}
+
+.cf-header-badges {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.cf-badge {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+
+.cf-badge--type {
+  background: rgba(14, 165, 233, 0.1);
+  color: #0369a1;
+  border: 0.5px solid rgba(14, 165, 233, 0.2);
+}
+
+.cf-badge--status {
+  background: rgba(15, 157, 138, 0.08);
+  color: #0f6e56;
+  border: 0.5px solid rgba(15, 157, 138, 0.18);
+}
+
+.cf-close-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  border: 0.5px solid var(--border-soft);
+  background: var(--bg-soft);
+  color: var(--text-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 15px;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.cf-close-btn:hover {
+  background: var(--bg-card-strong);
+  border-color: var(--border-input);
+}
+
+/* ── ZONE 2 : STEPPER HORIZONTAL ── */
+.cf-stepper {
+  display: flex;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 0.5px solid var(--border-soft);
+  background: var(--bg-soft);
+  flex-shrink: 0;
+  overflow-x: auto;
+  gap: 0;
+}
+
+.cf-step-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  flex-shrink: 0;
+}
+
+.cf-step-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-input);
+  background: var(--bg-card);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-soft);
+  transition: all 0.2s;
+}
+
+.cf-step-label {
+  font-size: 9px;
+  color: var(--text-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.cf-step-btn--active .cf-step-dot {
+  background: #0f9d8a;
+  border-color: #0f9d8a;
+  color: #fff;
+}
+
+.cf-step-btn--active .cf-step-label {
+  color: #0f9d8a;
+  font-weight: 500;
+}
+
+.cf-step-btn--done .cf-step-dot {
+  background: rgba(15, 157, 138, 0.1);
+  border-color: #0f9d8a;
+  color: #0f9d8a;
+}
+
+.cf-step-btn--done .cf-step-label {
+  color: #0f6e56;
+}
+
+.cf-step-btn--error .cf-step-dot {
+  background: rgba(220, 38, 38, 0.08);
+  border-color: rgba(220, 38, 38, 0.4);
+  color: #dc2626;
+}
+
+.cf-step-btn--error .cf-step-label {
+  color: #dc2626;
+}
+
+.cf-step-connector {
+  flex: 1;
+  height: 1.5px;
+  background: var(--border-soft);
+  border-radius: 1px;
+  min-width: 12px;
+  max-width: 32px;
+  margin-bottom: 12px;
+}
+
+.cf-step-connector--done {
+  background: #0f9d8a;
+}
+
+/* ── ZONE 3 : CORPS SCROLLABLE ── */
+.cf-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+
+.cf-body::-webkit-scrollbar {
+  width: 4px;
+}
+
+.cf-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cf-body::-webkit-scrollbar-thumb {
+  background: var(--border-soft);
+  border-radius: 2px;
+}
+
+/* ── INPUTS AVEC ICÔNE PRÉFIXE ── */
+.cf-input-wrap {
+  position: relative;
+}
+
+.cf-input-icon {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 15px;
+  color: var(--text-soft);
+  pointer-events: none;
+}
+
+.cf-input-wrap input,
+.cf-input-wrap select {
+  padding-left: 36px;
+}
+
+.cf-input-wrap textarea {
+  padding-left: 36px;
+}
+
+.cf-input-wrap:has(textarea) .cf-input-icon {
+  top: 14px;
+  transform: none;
+}
+
+/* ── CHECKLIST POINTS À VÉRIFIER ── */
+.cf-checklist {
+  border: 0.5px solid rgba(234, 179, 8, 0.25);
+  background: rgba(234, 179, 8, 0.04);
+  border-radius: var(--radius-sm, 14px);
+  padding: 12px 14px;
+}
+
+.cf-checklist-title {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 10px;
+}
+
+.cf-checklist-items {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.cf-check-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.cf-check-item i {
+  font-size: 15px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.cf-check-item--good i {
+  color: #0f9d8a;
+}
+
+.cf-check-item--warn i {
+  color: #d97706;
+}
+
+.cf-check-label {
+  font-weight: 500;
+  color: var(--text-main);
+  display: block;
+  font-size: 11px;
+}
+
+.cf-check-value {
+  color: var(--text-soft);
+  display: block;
+  font-size: 11px;
+  margin-top: 1px;
+  line-height: 1.4;
+}
+
+/* ── ZONE 4 : FOOTER STICKY ── */
+.cf-footer {
+  padding: 12px 16px;
+  border-top: 0.5px solid var(--border-soft);
+  background: var(--bg-soft);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.cf-footer-nav {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.cf-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+  border: 0.5px solid transparent;
+}
+
+.cf-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.cf-btn--ghost {
+  background: none;
+  border-color: transparent;
+  color: var(--text-soft);
+}
+
+.cf-btn--ghost:hover {
+  background: var(--bg-card-strong);
+}
+
+.cf-btn--secondary {
+  background: var(--bg-card);
+  border-color: var(--border-soft);
+  color: var(--text-main);
+}
+
+.cf-btn--secondary:hover:not(:disabled) {
+  background: var(--bg-card-strong);
+}
+
+.cf-btn--primary {
+  background: #0f9d8a;
+  color: #fff;
+  border-color: transparent;
+}
+
+.cf-btn--primary:hover:not(:disabled) {
+  background: #0c7c6d;
+}
+
+.cf-btn--submit {
+  background: var(--text-main);
+  color: #fff;
+  border-color: transparent;
+  padding: 0 18px;
+}
+
+.cf-btn--submit:hover:not(:disabled) {
+  opacity: 0.9;
+}

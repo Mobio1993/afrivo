@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from apps.platform_admin.models import HotelSubscription, PlatformAuditEvent, SubscriptionPlan
+from apps.platform_admin.models import HotelSubscription, PlatformAuditEvent, PlatformLicense, PlatformModule, SubscriptionPlan
 
 
 @admin.register(SubscriptionPlan)
@@ -20,6 +20,23 @@ class HotelSubscriptionAdmin(admin.ModelAdmin):
     ordering = ("-updated_at", "-id")
 
 
+@admin.register(PlatformModule)
+class PlatformModuleAdmin(admin.ModelAdmin):
+    list_display = ("name", "code", "monthly_license_price", "is_active", "updated_at")
+    list_filter = ("is_active",)
+    search_fields = ("name", "code", "description")
+    ordering = ("name", "code")
+
+
+@admin.register(PlatformLicense)
+class PlatformLicenseAdmin(admin.ModelAdmin):
+    list_display = ("module", "organization", "hotel", "status", "starts_at", "ends_at", "monthly_price")
+    list_filter = ("status", "module")
+    search_fields = ("module__name", "module__code", "organization__name", "hotel__name", "notes")
+    autocomplete_fields = ("module", "organization", "hotel")
+    ordering = ("-updated_at", "-id")
+
+
 @admin.register(PlatformAuditEvent)
 class PlatformAuditEventAdmin(admin.ModelAdmin):
     list_display = ("created_at", "event_type", "target_type", "target_label", "actor")
@@ -27,4 +44,3 @@ class PlatformAuditEventAdmin(admin.ModelAdmin):
     search_fields = ("target_label", "target_type", "actor__username", "actor__first_name", "actor__last_name")
     autocomplete_fields = ("actor",)
     ordering = ("-created_at", "-id")
-

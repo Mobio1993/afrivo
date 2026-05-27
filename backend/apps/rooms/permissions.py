@@ -1,7 +1,7 @@
 from rest_framework.permissions import SAFE_METHODS
 
+from apps.iam.services.permission_service import PermissionService
 from apps.tenancy.drf import AuthenticatedHotelPermission
-from apps.users.access import user_can_access
 
 
 class RoomInventoryPermission(AuthenticatedHotelPermission):
@@ -11,8 +11,11 @@ class RoomInventoryPermission(AuthenticatedHotelPermission):
         if not super().has_permission(request, view):
             return False
         if request.method in SAFE_METHODS:
-            return user_can_access(request.user, "rooms", "view")
-        return user_can_access(request.user, "rooms", "manage")
+            return PermissionService.user_can_access(request.user, "rooms", "view")
+        business_action = getattr(view, "business_action_map", {}).get(getattr(view, "action", ""))
+        if business_action:
+            return PermissionService.can_perform_action(request.user, business_action, strict=True)
+        return PermissionService.user_can_access(request.user, "rooms", "manage")
 
 
 class RoomOperationsPermission(AuthenticatedHotelPermission):
@@ -22,9 +25,12 @@ class RoomOperationsPermission(AuthenticatedHotelPermission):
         if not super().has_permission(request, view):
             return False
         if request.method in SAFE_METHODS:
-            return user_can_access(request.user, "rooms", "view")
+            return PermissionService.user_can_access(request.user, "rooms", "view")
+        business_action = getattr(view, "business_action_map", {}).get(getattr(view, "action", ""))
+        if business_action:
+            return PermissionService.can_perform_action(request.user, business_action, strict=True)
         return (
-            user_can_access(request.user, "rooms", "update")
-            or user_can_access(request.user, "operations", "update")
-            or user_can_access(request.user, "operations", "manage")
+            PermissionService.user_can_access(request.user, "rooms", "update")
+            or PermissionService.user_can_access(request.user, "operations", "update")
+            or PermissionService.user_can_access(request.user, "operations", "manage")
         )

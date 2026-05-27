@@ -1,6 +1,8 @@
-import { NavLink } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { NavLink, useLocation } from "react-router-dom";
 
-import { hasPermission } from "../../../auth/permissions";
+import { hasHierarchyAccess, hasPermission } from "../../../auth/permissions";
+import HotelBadge from "./HotelBadge";
 import "./Sidebar.css";
 
 const Icons = {
@@ -59,12 +61,44 @@ const Icons = {
       <line x1="2" y1="20" x2="22" y2="20" />
     </svg>
   ),
+  History: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 8v5l3 2" />
+      <path d="M3 12a9 9 0 1 0 3-6.7" />
+      <path d="M3 4v5h5" />
+    </svg>
+  ),
   Users: () => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
       <circle cx="9" cy="7" r="4" />
       <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
       <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  ),
+  Settings: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.04.04a2 2 0 1 1-2.83 2.83l-.04-.04A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21a2 2 0 1 1-4 0v-.06A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.04.04a2 2 0 1 1-2.83-2.83l.04-.04A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3a2 2 0 1 1 0-4h.06A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.04-.04a2 2 0 1 1 2.83-2.83l.04.04A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3a2 2 0 1 1 4 0v.06A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.04-.04a2 2 0 1 1 2.83 2.83l-.04.04A1.7 1.7 0 0 0 19.4 9c.42.14.76.35 1 .6.28.29.43.68.4 1.1V11a2 2 0 1 1 0 4h-.06a1.7 1.7 0 0 0-1.34.6z" />
+    </svg>
+  ),
+  SmartRooms: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="7" y="7" width="10" height="10" rx="1" />
+      <path d="M9 7V4" /><path d="M12 7V4" /><path d="M15 7V4" />
+      <path d="M9 20v-3" /><path d="M12 20v-3" /><path d="M15 20v-3" />
+      <path d="M7 9H4" /><path d="M7 12H4" /><path d="M7 15H4" />
+      <path d="M20 9h-3" /><path d="M20 12h-3" /><path d="M20 15h-3" />
+    </svg>
+  ),
+  Planning: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="17" rx="2" />
+      <line x1="16" y1="2" x2="16" y2="6" />
+      <line x1="8" y1="2" x2="8" y2="6" />
+      <line x1="3" y1="10" x2="21" y2="10" />
+      <line x1="7" y1="14" x2="13" y2="14" />
+      <line x1="7" y1="18" x2="11" y2="18" />
     </svg>
   ),
   Shield: () => (
@@ -112,24 +146,128 @@ const Icons = {
   ),
 };
 
+const BillingIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="5" width="20" height="14" rx="2" />
+    <path d="M2 10h20" />
+    <path d="M7 15h2" />
+    <path d="M12 15h5" />
+  </svg>
+);
+
 const navigationItems = [
   { to: "/dashboard", label: "Dashboard", Icon: Icons.Dashboard, end: true, permissions: [["dashboard", "view"]] },
   { to: "/clients", label: "Clients", Icon: Icons.Clients, permissions: [["clients", "view"]] },
   { to: "/rooms", label: "Chambres", Icon: Icons.Rooms, permissions: [["rooms", "view"], ["operations", "view"]] },
+  { to: "/smart-rooms", label: "Chambres intelligentes", Icon: Icons.SmartRooms, permissions: [["rooms", "view"], ["operations", "view"]] },
   { to: "/exploitation", label: "Exploitation", Icon: Icons.Exploitation, permissions: [["operations", "view"]] },
-  { to: "/operations", label: "Operations", Icon: Icons.Operations, badge: "·", permissions: [["operations", "view"]] },
+  { to: "/day-use", label: "Day Use", Icon: Icons.Operations, permissions: [["operations", "view"]] },
+  { to: "/operations", label: "Operations", Icon: Icons.Operations, end: true, badge: "·", permissions: [["operations", "view"]] },
+  { to: "/operations/all", label: "Toutes operations", Icon: Icons.Operations, permissions: [["operations", "view"]] },
+  { to: "/operations/bookings", label: "Reservations", Icon: Icons.Planning, permissions: [["operations", "view"]] },
+  { to: "/reservation-planning", label: "Planning réservations", Icon: Icons.Planning, permissions: [["operations", "view"]] },
+  { to: "/billing", label: "Facturation", Icon: BillingIcon, permissions: [["billing", "view"]] },
+  { to: "/payments", label: "Paiements", Icon: Icons.CreditCard, permissions: [["payments", "view"]] },
+  { to: "/pos-restaurant/dashboard", label: "POS Restaurant", Icon: Icons.Exploitation, permissions: [] },
   { to: "/reports", label: "Rapports", Icon: Icons.Reports, permissions: [["reports", "view"]] },
+  { to: "/history/activity-logs", label: "Journal d'activite", Icon: Icons.History, permissions: [["history", "view"]] },
+  { to: "/account/security", label: "Securite du compte", Icon: Icons.Shield, permissions: [] },
   { to: "/users", label: "Utilisateurs", Icon: Icons.Users, permissions: [["users", "view"]] },
+  { to: "/settings", label: "Parametres", Icon: Icons.Settings, permissions: [["settings", "view"]] },
 ];
 
 const platformNavigationItems = [
   { to: "/platform", label: "Vue plateforme", Icon: Icons.Shield, end: true, permissions: [["platform_security", "view"]] },
-  { to: "/platform/organizations", label: "Organisations", Icon: Icons.Building, permissions: [["platform_organizations", "view"]] },
+  { to: "/platform/organizations", label: "Clients SaaS", Icon: Icons.Building, permissions: [["platform_organizations", "view"]] },
   { to: "/platform/hotels", label: "Hotels", Icon: Icons.Rooms, permissions: [["platform_hotels", "view"]] },
+  { to: "/platform/modules", label: "Modules", Icon: Icons.Operations, permissions: [["platform_modules", "view"]] },
+  { to: "/platform/licenses", label: "Licences", Icon: Icons.CreditCard, permissions: [["platform_licenses", "view"]] },
   { to: "/platform/subscriptions", label: "Abonnements", Icon: Icons.CreditCard, permissions: [["platform_subscriptions", "view"]] },
-  { to: "/platform/users", label: "Admins", Icon: Icons.Users, permissions: [["platform_users", "view"]] },
+  { to: "/platform/users", label: "Utilisateurs & acces POS", Icon: Icons.Users, permissions: [["platform_users", "view"]] },
   { to: "/platform/security", label: "Securite", Icon: Icons.Shield, permissions: [["platform_security", "view"]] },
+  { to: "/account/security", label: "Mon compte", Icon: Icons.Shield, permissions: [] },
 ];
+
+const superRootNavigationItems = [
+  { to: "/super-root/dashboard", label: "Vue systeme", Icon: Icons.Shield, end: true, permissions: [["platform_security", "view"]] },
+  { to: "/super-root/platforms", label: "Plateformes", Icon: Icons.Shield, permissions: [["platform_security", "view"]] },
+  { to: "/super-root/organizations", label: "Organisations", Icon: Icons.Building, permissions: [["platform_organizations", "view"]] },
+  { to: "/super-root/hotels", label: "Hotels", Icon: Icons.Rooms, permissions: [["platform_hotels", "view"]] },
+  { to: "/super-root/users", label: "Utilisateurs", Icon: Icons.Users, permissions: [["platform_users", "view"]] },
+  { to: "/super-root/roles-permissions", label: "Roles & permissions", Icon: Icons.Users, permissions: [["platform_users", "view"]] },
+  { to: "/super-root/licenses", label: "Licences", Icon: Icons.CreditCard, permissions: [["platform_licenses", "view"]] },
+  { to: "/super-root/modules", label: "Modules", Icon: Icons.Operations, permissions: [["platform_modules", "view"]] },
+  { to: "/super-root/audit-logs", label: "Audit logs", Icon: Icons.History, permissions: [["platform_security", "view"]] },
+  { to: "/super-root/monitoring", label: "Monitoring", Icon: Icons.Reports, permissions: [["platform_security", "view"]] },
+  { to: "/super-root/infrastructure", label: "Infrastructure", Icon: Icons.Settings, permissions: [["platform_security", "view"]] },
+  { to: "/super-root/notifications", label: "Notifications", Icon: Icons.History, permissions: [["platform_security", "view"]] },
+  { to: "/super-root/ai-automation", label: "AI & Automation", Icon: Icons.Operations, permissions: [["platform_security", "view"]] },
+  { to: "/super-root/security", label: "Securite", Icon: Icons.Shield, permissions: [["platform_security", "view"]] },
+  { to: "/super-root/developer-center", label: "Developer Center", Icon: Icons.Settings, permissions: [["platform_security", "view"]] },
+  { to: "/super-root/settings", label: "Parametres systeme", Icon: Icons.Settings, permissions: [["platform_security", "view"]] },
+  { to: "/super-root/maintenance", label: "Maintenance", Icon: Icons.Settings, permissions: [["platform_security", "view"]] },
+  { to: "/super-root/backups", label: "Backups", Icon: Icons.CreditCard, permissions: [["platform_security", "view"]] },
+  { to: "/account/security", label: "Mon compte", Icon: Icons.Shield, permissions: [] },
+];
+
+function NavWithPill({ items, isDrawer, onClose, ariaLabel }) {
+  const location = useLocation();
+  const navRef = useRef(null);
+  const isFirst = useRef(true);
+  const [pill, setPill] = useState({ top: 0, height: 0, opacity: 0, instant: true });
+
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    const active = nav.querySelector(".nav-link.active");
+    if (!active) {
+      setPill((p) => ({ ...p, opacity: 0 }));
+      return;
+    }
+    const navRect = nav.getBoundingClientRect();
+    const linkRect = active.getBoundingClientRect();
+    const top = Math.round(linkRect.top - navRect.top);
+    const height = Math.round(linkRect.height);
+
+    if (isFirst.current) {
+      isFirst.current = false;
+      setPill({ top, height, opacity: 1, instant: true });
+      requestAnimationFrame(() => setPill((p) => ({ ...p, instant: false })));
+    } else {
+      setPill({ top, height, opacity: 1, instant: false });
+    }
+  }, [location.pathname]);
+
+  return (
+    <nav ref={navRef} className="nav-list" aria-label={ariaLabel}>
+      <span
+        className="nav-active-pill"
+        style={{
+          top: pill.top,
+          height: pill.height,
+          opacity: pill.opacity,
+          transition: pill.instant ? "none" : undefined,
+        }}
+        aria-hidden="true"
+      />
+      {items.map(({ to, label, Icon, end, badge }) => (
+        <NavLink
+          key={to}
+          to={to}
+          end={end}
+          className="nav-link"
+          onClick={isDrawer ? onClose : undefined}
+        >
+          <span className="nav-link-icon" aria-hidden="true">
+            <Icon />
+          </span>
+          <span className="nav-link-label">{label}</span>
+          {badge ? <span className="nav-link-badge">{badge}</span> : null}
+        </NavLink>
+      ))}
+    </nav>
+  );
+}
 
 function buildInitials(user) {
   if (!user) return "?";
@@ -143,25 +281,34 @@ function formatRole(role) {
   return role.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function isPlatformAdmin(user) {
-  return Boolean(
-    user
-    && (
-      user.is_platform_admin === true
-      || user.role === "platform_admin"
-      || user.role_code === "platform_admin"
-    )
-  );
-}
-
 export function Sidebar({ user, onLogout, isDrawer = false, onClose }) {
   const hotelName = user?.hotel_name || import.meta.env.VITE_HOTEL_NAME || "Hotel";
-  const visibleNavigationItems = navigationItems.filter((item) =>
-    item.permissions.some(([module, action]) => hasPermission(user, module, action)),
-  );
-  const visiblePlatformNavigationItems = isPlatformAdmin(user)
+  const workspaceName = user?.organization_name || hotelName;
+  const currentHotel = {
+    name: hotelName,
+    logo_url: user?.hotel_logo_url || user?.hotel?.logo_url || "",
+    status: user?.hotel_status || user?.hotel?.status || "active",
+  };
+  const currentOrganization = {
+    name: workspaceName,
+    logo_url: user?.organization_logo_url || user?.organization?.logo_url || "",
+    status: user?.organization_status || user?.organization?.status || "active",
+  };
+  const userIsSuperRoot = hasHierarchyAccess(user, "super-root");
+  const userIsPlatformAdmin = hasHierarchyAccess(user, "platform-admin") && !userIsSuperRoot;
+  const visibleNavigationItems = userIsPlatformAdmin || userIsSuperRoot
+    ? []
+    : navigationItems.filter((item) =>
+        item.permissions.length === 0 || item.permissions.some(([module, action]) => hasPermission(user, module, action)),
+      );
+  const visiblePlatformNavigationItems = userIsPlatformAdmin
     ? platformNavigationItems.filter((item) =>
-        item.permissions.some(([module, action]) => hasPermission(user, module, action)),
+        item.permissions.length === 0 || item.permissions.some(([module, action]) => hasPermission(user, module, action)),
+      )
+    : [];
+  const visibleSuperRootNavigationItems = userIsSuperRoot
+    ? superRootNavigationItems.filter((item) =>
+        item.permissions.length === 0 || item.permissions.some(([module, action]) => hasPermission(user, module, action)),
       )
     : [];
 
@@ -184,10 +331,12 @@ export function Sidebar({ user, onLogout, isDrawer = false, onClose }) {
               </div>
             </div>
 
-            <div className="brand-hotel-pill">
-              <span className="brand-hotel-dot" aria-hidden="true" />
-              <span className="brand-hotel-name">{hotelName}</span>
-            </div>
+            {!userIsPlatformAdmin && !userIsSuperRoot ? (
+              <HotelBadge
+                hotel={currentHotel}
+                organization={currentOrganization}
+              />
+            ) : null}
           </div>
 
           <button
@@ -200,47 +349,39 @@ export function Sidebar({ user, onLogout, isDrawer = false, onClose }) {
           </button>
         </div>
 
-        <div className="sidebar-nav-region">
-          <span className="nav-section-label">Navigation</span>
-          <nav className="nav-list" aria-label="Navigation principale">
-            {visibleNavigationItems.map(({ to, label, Icon, end, badge }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end={end}
-                className="nav-link"
-                onClick={isDrawer ? onClose : undefined}
-              >
-                <span className="nav-link-icon" aria-hidden="true">
-                  <Icon />
-                </span>
-                <span className="nav-link-label">{label}</span>
-                {badge ? <span className="nav-link-badge">{badge}</span> : null}
-              </NavLink>
-            ))}
-          </nav>
-        </div>
+        {visibleNavigationItems.length ? (
+          <div className="sidebar-nav-region">
+            <span className="nav-section-label">Navigation</span>
+            <NavWithPill
+              items={visibleNavigationItems}
+              isDrawer={isDrawer}
+              onClose={onClose}
+              ariaLabel="Navigation principale"
+            />
+          </div>
+        ) : null}
+
+        {visibleSuperRootNavigationItems.length ? (
+          <div className="sidebar-nav-region">
+            <span className="nav-section-label">Super Root</span>
+            <NavWithPill
+              items={visibleSuperRootNavigationItems}
+              isDrawer={isDrawer}
+              onClose={onClose}
+              ariaLabel="Navigation super root"
+            />
+          </div>
+        ) : null}
 
         {visiblePlatformNavigationItems.length ? (
           <div className="sidebar-nav-region">
             <span className="nav-section-label">Plateforme</span>
-            <nav className="nav-list" aria-label="Navigation plateforme">
-              {visiblePlatformNavigationItems.map(({ to, label, Icon, end, badge }) => (
-                <NavLink
-                  key={to}
-                  to={to}
-                  end={end}
-                  className="nav-link"
-                  onClick={isDrawer ? onClose : undefined}
-                >
-                  <span className="nav-link-icon" aria-hidden="true">
-                    <Icon />
-                  </span>
-                  <span className="nav-link-label">{label}</span>
-                  {badge ? <span className="nav-link-badge">{badge}</span> : null}
-                </NavLink>
-              ))}
-            </nav>
+            <NavWithPill
+              items={visiblePlatformNavigationItems}
+              isDrawer={isDrawer}
+              onClose={onClose}
+              ariaLabel="Navigation plateforme"
+            />
           </div>
         ) : null}
 

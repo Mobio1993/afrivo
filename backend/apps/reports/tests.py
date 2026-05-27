@@ -56,6 +56,7 @@ class TenancyReadinessReportApiTests(TestCase):
     @override_settings(
         TENANCY_STRICT_MODULES={
             "billing": True,
+            "payments": False,
             "consumptions": False,
             "satisfaction": True,
             "guests": False,
@@ -77,13 +78,13 @@ class TenancyReadinessReportApiTests(TestCase):
         self.assertEqual(payload["strict_modules"][0]["env_var"], "TENANCY_STRICT_SATISFACTION")
         self.assertIn("redeployer le backend", payload["strict_modules"][0]["activation_instruction"])
         self.assertEqual(payload["recommended_rollout_order"][0], "satisfaction")
-        self.assertEqual(payload["next_activation"]["module"], "consumptions")
+        self.assertEqual(payload["next_activation"]["module"], "payments")
         self.assertFalse(payload["next_activation"]["can_activate_now"])
         self.assertEqual(payload["next_activation"]["status"], "blocked")
-        self.assertEqual(payload["next_activation"]["env_var"], "TENANCY_STRICT_CONSUMPTIONS")
+        self.assertEqual(payload["next_activation"]["env_var"], "TENANCY_STRICT_PAYMENTS")
         self.assertEqual(payload["rollout_journal"][0]["status"], "completed")
         self.assertEqual(payload["rollout_journal"][2]["status"], "blocked")
-        self.assertEqual(payload["rollout_journal"][2]["module"], "consumptions")
+        self.assertEqual(payload["rollout_journal"][2]["module"], "payments")
 
     def test_non_admin_cannot_view_tenancy_readiness_report(self):
         self.client.force_login(self.manager)
@@ -125,6 +126,11 @@ class TenancyReadinessReportApiTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.json()["module"], "reports")
 
+    def test_modularized_report_routes_keep_api_and_web_paths_separated(self):
+        self.assertEqual(reverse("api-reports-overview"), "/api/reports/overview/")
+        self.assertEqual(reverse("api-report-financial"), "/api/reports/financial/")
+        self.assertEqual(reverse("report-financial"), "/reports/financial/")
+
 
 class ScopedReportsApiTests(TestCase):
     def setUp(self):
@@ -146,6 +152,13 @@ class ScopedReportsApiTests(TestCase):
             username="manager-a",
             password="testpass123",
             role=User.Role.MANAGER,
+            organization=self.organization,
+            hotel=self.hotel_a,
+        )
+        self.accountant_a = User.objects.create_user(
+            username="accountant-a",
+            password="testpass123",
+            role=User.Role.CASHIER,
             organization=self.organization,
             hotel=self.hotel_a,
         )
@@ -222,6 +235,7 @@ class ScopedReportsApiTests(TestCase):
             day_use=self.day_use_a,
             amount=50,
             status=Payment.Status.PAID,
+            payment_type=Payment.PaymentType.DAY_USE_PREPAYMENT,
             method=Payment.Method.CASH,
         )
         Payment.objects.create(
@@ -231,6 +245,7 @@ class ScopedReportsApiTests(TestCase):
             day_use=self.day_use_b,
             amount=80,
             status=Payment.Status.PAID,
+            payment_type=Payment.PaymentType.DAY_USE_PREPAYMENT,
             method=Payment.Method.CASH,
         )
 
@@ -251,7 +266,7 @@ class ScopedReportsApiTests(TestCase):
         self.assertEqual(payload["summary_cards"][2]["value"], 1)
 
     def test_financial_report_is_scoped_to_active_hotel(self):
-        self.client.force_login(self.manager_a)
+        self.client.force_login(self.accountant_a)
 
         response = self.client.get(reverse("api-report-financial"))
 
@@ -260,6 +275,14 @@ class ScopedReportsApiTests(TestCase):
         self.assertEqual(payload["summary_cards"][0]["value"], "50.00")
         self.assertEqual(len(payload["recent_rows"]), 1)
         self.assertEqual(payload["recent_rows"][0]["reference"], "PAY-A-001")
+
+    def test_manager_cannot_view_financial_report(self):
+        self.client.force_login(self.manager_a)
+
+        response = self.client.get(reverse("api-report-financial"))
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["code"], "business_permission_denied")
 
     def test_occupancy_report_is_scoped_to_active_hotel(self):
         self.client.force_login(self.manager_a)
@@ -284,6 +307,36 @@ class ScopedReportsApiTests(TestCase):
         self.assertEqual(payload["summary_cards"][3]["value"], "50.00")
         self.assertEqual(len(payload["recent_rows"]), 1)
         self.assertEqual(payload["recent_rows"][0]["reference"], self.day_use_a.reference)
+
+    def test_web_financial_report_is_scoped_to_active_hotel(self):
+        self.client.force_login(self.manager_a)
+
+        response = self.client.get(reverse("report-financial"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["summary_cards"][0]["value"], 50)
+        references = {payment.reference for payment in response.context["recent_payments"]}
+        self.assertEqual(references, {"PAY-A-001"})
+
+    def test_web_financial_export_is_scoped_to_active_hotel(self):
+        self.client.force_login(self.manager_a)
+
+        response = self.client.get(reverse("report-financial-export"))
+
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn("PAY-A-001", body)
+        self.assertNotIn("PAY-B-001", body)
+
+    def test_web_occupancy_report_is_scoped_to_active_hotel(self):
+        self.client.force_login(self.manager_a)
+
+        response = self.client.get(reverse("report-occupancy"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["summary_cards"][0]["value"], 1)
+        names = {item.name for item in response.context["room_type_breakdown"]}
+        self.assertEqual(names, {"Standard A"})
 
     def test_reports_overview_requires_hotel_for_non_platform_admin(self):
         user_without_hotel = User.objects.create_user(

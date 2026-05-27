@@ -3,7 +3,17 @@ from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.utils.html import format_html
 
 from apps.tenancy.services import assign_default_hotel_to_users
-from apps.users.models import User, UserModulePermission
+from apps.users.models import (
+    IAMPermission,
+    IAMRole,
+    IAMRolePermission,
+    User,
+    UserHotelRole,
+    UserModulePermission,
+    UserOrganizationRole,
+    UserPermissionOverride,
+    UserSession,
+)
 
 
 class HotelAssignmentFilter(admin.SimpleListFilter):
@@ -37,6 +47,7 @@ class UserModulePermissionInline(admin.TabularInline):
 class UserAdmin(DjangoUserAdmin):
     list_display = (
         "username",
+        "public_id",
         "first_name",
         "last_name",
         "email",
@@ -45,10 +56,27 @@ class UserAdmin(DjangoUserAdmin):
         "tenancy_status",
         "role",
         "is_platform_admin",
+        "platform_role",
+        "email_verified",
+        "phone_verified",
+        "failed_login_attempts",
+        "locked_until",
         "is_active",
         "is_staff",
     )
-    list_filter = ("organization", "hotel", HotelAssignmentFilter, "role", "is_platform_admin", "is_active", "is_staff", "is_superuser")
+    list_filter = (
+        "organization",
+        "hotel",
+        HotelAssignmentFilter,
+        "role",
+        "is_platform_admin",
+        "platform_role",
+        "email_verified",
+        "phone_verified",
+        "is_active",
+        "is_staff",
+        "is_superuser",
+    )
     ordering = ("username",)
     save_on_top = True
     search_fields = DjangoUserAdmin.search_fields + ("organization__name", "hotel__name")
@@ -57,7 +85,20 @@ class UserAdmin(DjangoUserAdmin):
         (
             "Informations hotelieres",
             {
-                "fields": ("organization", "hotel", "tenancy_status", "role", "is_platform_admin", "phone"),
+                "fields": (
+                    "public_id",
+                    "organization",
+                    "hotel",
+                    "tenancy_status",
+                    "role",
+                    "is_platform_admin",
+                    "platform_role",
+                    "phone",
+                    "email_verified",
+                    "phone_verified",
+                    "failed_login_attempts",
+                    "locked_until",
+                ),
             },
         ),
     )
@@ -65,11 +106,11 @@ class UserAdmin(DjangoUserAdmin):
         (
             "Informations hotelieres",
             {
-                "fields": ("organization", "hotel", "role", "is_platform_admin", "phone", "first_name", "last_name", "email"),
+                "fields": ("organization", "hotel", "role", "is_platform_admin", "platform_role", "phone", "first_name", "last_name", "email"),
             },
         ),
     )
-    readonly_fields = ("tenancy_status",)
+    readonly_fields = ("public_id", "tenancy_status")
     actions = ("assign_default_hotel_action",)
 
     @admin.display(description="Statut tenancy")
@@ -106,3 +147,53 @@ class UserAdmin(DjangoUserAdmin):
                 "Aucun utilisateur sans hotel n'a ete selectionne.",
                 level=messages.INFO,
             )
+
+
+@admin.register(IAMRole)
+class IAMRoleAdmin(admin.ModelAdmin):
+    list_display = ("code", "name", "is_system", "is_active", "created_at")
+    list_filter = ("is_system", "is_active")
+    search_fields = ("code", "name")
+
+
+@admin.register(IAMPermission)
+class IAMPermissionAdmin(admin.ModelAdmin):
+    list_display = ("code", "module_code", "action", "is_active", "created_at")
+    list_filter = ("module_code", "action", "is_active")
+    search_fields = ("code", "description")
+
+
+@admin.register(IAMRolePermission)
+class IAMRolePermissionAdmin(admin.ModelAdmin):
+    list_display = ("role", "permission", "created_at")
+    list_filter = ("role", "permission__module_code")
+    search_fields = ("role__code", "permission__code")
+
+
+@admin.register(UserPermissionOverride)
+class UserPermissionOverrideAdmin(admin.ModelAdmin):
+    list_display = ("user", "permission", "is_allowed", "reason", "created_at")
+    list_filter = ("is_allowed", "permission__module_code")
+    search_fields = ("user__username", "permission__code", "reason")
+
+
+@admin.register(UserOrganizationRole)
+class UserOrganizationRoleAdmin(admin.ModelAdmin):
+    list_display = ("user", "organization", "role_code", "is_active", "created_at")
+    list_filter = ("role_code", "is_active", "organization")
+    search_fields = ("user__username", "organization__name")
+
+
+@admin.register(UserHotelRole)
+class UserHotelRoleAdmin(admin.ModelAdmin):
+    list_display = ("user", "hotel", "role_code", "is_active", "created_at")
+    list_filter = ("role_code", "is_active", "hotel")
+    search_fields = ("user__username", "hotel__name")
+
+
+@admin.register(UserSession)
+class UserSessionAdmin(admin.ModelAdmin):
+    list_display = ("user", "device_name", "ip_address", "is_active", "last_activity", "created_at")
+    list_filter = ("is_active", "created_at", "last_activity")
+    search_fields = ("user__username", "refresh_token_jti", "ip_address", "user_agent")
+    readonly_fields = ("refresh_token_jti", "created_at", "last_activity")

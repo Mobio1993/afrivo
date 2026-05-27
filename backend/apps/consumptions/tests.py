@@ -12,6 +12,7 @@ from apps.consumptions.models import ClientConsumption, ServiceDepartment
 from apps.guests.models import Guest
 from apps.rooms.models import Room, RoomType
 from apps.stays.models import Stay
+from apps.tenancy.models import Hotel, Organization
 
 
 User = get_user_model()
@@ -87,18 +88,30 @@ class ClientConsumptionModelTests(TestCase):
 
 class ClientConsumptionApiTests(TestCase):
     def setUp(self):
+        self.organization = Organization.objects.create(name="Consumption Group", slug="consumption-group")
+        self.hotel = Hotel.objects.create(
+            organization=self.organization,
+            name="Consumption Hotel",
+            code="CONS",
+            slug="consumption-hotel",
+        )
         self.user = User.objects.create_user(
             username="cashier",
             password="testpass123",
+            role=User.Role.RECEPTION,
+            organization=self.organization,
+            hotel=self.hotel,
         )
         self.client.force_login(self.user)
 
         self.guest = Guest.objects.create(
+            hotel=self.hotel,
             first_name="Awa",
             last_name="Diop",
             phone="+221770000333",
         )
         self.room_type = RoomType.objects.create(
+            hotel=self.hotel,
             name="Suite",
             code="STE",
             capacity=4,
@@ -106,8 +119,9 @@ class ClientConsumptionApiTests(TestCase):
             max_children=2,
             base_price_per_night=125000,
         )
-        self.room = Room.objects.create(number="402", room_type=self.room_type)
+        self.room = Room.objects.create(hotel=self.hotel, number="402", room_type=self.room_type)
         self.booking = Booking.objects.create(
+            hotel=self.hotel,
             guest=self.guest,
             room_type=self.room_type,
             room=self.room,
@@ -168,6 +182,57 @@ class ClientConsumptionApiTests(TestCase):
         self.assertEqual(len(payload), 1)
         self.assertEqual(payload[0]["room"], self.room.id)
 
+    def test_create_consumption_rejects_stay_from_other_hotel(self):
+        other_org = Organization.objects.create(name="Other Consumption Group", slug="other-consumption-group")
+        other_hotel = Hotel.objects.create(
+            organization=other_org,
+            name="Other Consumption Hotel",
+            code="OCONS",
+            slug="other-consumption-hotel",
+        )
+        other_guest = Guest.objects.create(
+            hotel=other_hotel,
+            first_name="Other",
+            last_name="Client",
+            phone="+221770000334",
+        )
+        other_room_type = RoomType.objects.create(
+            hotel=other_hotel,
+            name="Other Suite",
+            code="OSTE",
+            base_price_per_night=Decimal("100000.00"),
+        )
+        other_room = Room.objects.create(hotel=other_hotel, number="802", room_type=other_room_type)
+        other_booking = Booking.objects.create(
+            hotel=other_hotel,
+            guest=other_guest,
+            room_type=other_room_type,
+            room=other_room,
+            status=Booking.Status.CONFIRMED,
+            check_in_date=timezone.localdate(),
+            check_out_date=timezone.localdate() + timedelta(days=1),
+        )
+        other_stay = Stay.create_from_booking(other_booking)
+
+        response = self.client.post(
+            "/api/consumptions/client-consumptions/",
+            data=json.dumps(
+                {
+                    "client": self.guest.id,
+                    "stay": other_stay.id,
+                    "service": self.department.id,
+                    "label": "Cross tenant",
+                    "quantity": "1.00",
+                    "unit_price": "8500.00",
+                    "consumed_at": timezone.now().isoformat(),
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("stay", response.json())
+
     @override_settings(
         TENANCY_STRICT_MODULES={
             "billing": False,
@@ -179,6 +244,13 @@ class ClientConsumptionApiTests(TestCase):
         }
     )
     def test_consumptions_api_can_be_switched_to_strict_mode(self):
+        orphan = User.objects.create_user(
+            username="strict-consumption-orphan",
+            password="testpass123",
+            role=User.Role.RECEPTION,
+        )
+        self.client.force_login(orphan)
+
         response = self.client.get("/api/consumptions/client-consumptions/")
 
         self.assertEqual(response.status_code, 403)

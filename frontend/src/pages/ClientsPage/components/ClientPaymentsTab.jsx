@@ -1,3 +1,6 @@
+import { useEffect, useState } from "react";
+
+import { getClientPayments } from "../../../services/clientsService";
 import { formatAmount, formatDateTime, normalizeValue } from "../utils";
 import { EmptyStateCard } from "./EmptyStateCard";
 
@@ -12,12 +15,34 @@ function PortfolioCard({ label, value, meta }) {
 }
 
 export function ClientPaymentsTab({ selectedClient }) {
+  const [payload, setPayload] = useState({
+    payment_portfolio: selectedClient?.payment_portfolio || {},
+    results: selectedClient?.payment_history || [],
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!selectedClient?.id) return undefined;
+    setPayload({
+      payment_portfolio: selectedClient.payment_portfolio || {},
+      results: selectedClient.payment_history || [],
+    });
+    setLoading(true);
+    setError("");
+    getClientPayments(selectedClient.id)
+      .then((data) => setPayload(data))
+      .catch((requestError) => setError(requestError.message || "Impossible de charger les paiements."))
+      .finally(() => setLoading(false));
+    return undefined;
+  }, [selectedClient?.id]);
+
   if (!selectedClient) {
     return null;
   }
 
-  const portfolio = selectedClient.payment_portfolio || {};
-  const payments = selectedClient.payment_history || [];
+  const portfolio = payload.payment_portfolio || {};
+  const payments = payload.results || [];
 
   return (
     <div className="table-like clients-payments-tab">
@@ -43,6 +68,9 @@ export function ClientPaymentsTab({ selectedClient }) {
           meta="Encaissements en attente de validation."
         />
       </div>
+
+      {loading ? <div className="status-box">Chargement des paiements...</div> : null}
+      {error ? <div className="alert-box">{error}</div> : null}
 
       {payments.length ? (
         <div className="table-like">

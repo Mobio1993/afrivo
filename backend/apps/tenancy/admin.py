@@ -27,7 +27,6 @@ class HotelAdmin(admin.ModelAdmin):
 
 @admin.register(HotelSettings)
 class HotelSettingsAdmin(admin.ModelAdmin):
-    list_display = ("hotel", "check_in_hour", "check_out_hour", "default_language", "satisfaction_enabled")
-    list_filter = ("default_language", "satisfaction_enabled")
+    list_display = ("hotel", "hotel_name_display", "currency", "timezone", "checkin_time", "checkout_time", "enable_activity_log")
+    list_filter = ("currency", "no_show_policy", "cancellation_policy", "enable_activity_log", "satisfaction_enabled")
     search_fields = ("hotel__name", "hotel__code", "hotel__organization__name")
-

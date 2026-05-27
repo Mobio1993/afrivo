@@ -1,7 +1,18 @@
 from django.contrib import admin, messages
 from django.core.exceptions import ValidationError
 
-from apps.rooms.models import Room, RoomHousekeepingTask, RoomMaintenanceIncident, RoomRateRule, RoomType
+from apps.rooms.models import (
+    EnergyReading,
+    Room,
+    RoomAlert,
+    RoomHousekeepingTask,
+    RoomLiveStatus,
+    RoomMaintenanceIncident,
+    RoomRateRule,
+    RoomSensor,
+    RoomType,
+    SensorEvent,
+)
 from apps.users.models import User
 
 
@@ -135,3 +146,48 @@ class RoomMaintenanceIncidentAdmin(AdminOnlyInventoryMixin, admin.ModelAdmin):
     search_fields = ("room__number", "title", "description", "resolution_notes")
     autocomplete_fields = ("hotel", "room", "reported_by", "assigned_to")
     readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(RoomLiveStatus)
+class RoomLiveStatusAdmin(AdminOnlyInventoryMixin, admin.ModelAdmin):
+    list_display = ("hotel", "room", "hotel_status", "presence_status", "door_status", "ac_status", "light_status", "temperature", "humidity", "updated_at")
+    list_filter = ("hotel", "hotel_status", "presence_status", "door_status")
+    search_fields = ("room__number",)
+    autocomplete_fields = ("hotel", "room")
+    readonly_fields = ("updated_at",)
+
+
+@admin.register(RoomSensor)
+class RoomSensorAdmin(AdminOnlyInventoryMixin, admin.ModelAdmin):
+    list_display = ("hotel", "room", "sensor_type", "name", "status", "last_seen_at")
+    list_filter = ("hotel", "sensor_type", "status")
+    search_fields = ("room__number", "name")
+    autocomplete_fields = ("hotel", "room")
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(RoomAlert)
+class RoomAlertAdmin(AdminOnlyInventoryMixin, admin.ModelAdmin):
+    list_display = ("hotel", "room", "alert_type", "severity", "is_active", "created_at")
+    list_filter = ("hotel", "alert_type", "severity", "is_active")
+    search_fields = ("room__number", "message")
+    autocomplete_fields = ("hotel", "room")
+    readonly_fields = ("created_at",)
+
+
+@admin.register(SensorEvent)
+class SensorEventAdmin(AdminOnlyInventoryMixin, admin.ModelAdmin):
+    list_display = ("hotel", "room", "sensor", "event_type", "created_at")
+    list_filter = ("hotel", "event_type")
+    search_fields = ("room__number", "event_type")
+    autocomplete_fields = ("hotel", "room", "sensor")
+    readonly_fields = ("created_at",)
+
+
+@admin.register(EnergyReading)
+class EnergyReadingAdmin(AdminOnlyInventoryMixin, admin.ModelAdmin):
+    list_display = ("hotel", "room", "value_kwh", "recorded_at")
+    list_filter = ("hotel",)
+    search_fields = ("room__number",)
+    autocomplete_fields = ("hotel", "room")
+    readonly_fields = ("created_at",)

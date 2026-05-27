@@ -37,7 +37,7 @@
   display: flex;
   flex-direction: column;
   gap: 22px;
-  padding: 20px;
+  padding: 0;
   overflow: hidden;
 }
 
@@ -103,7 +103,7 @@
   .layout-shell-main {
     min-height: auto;
     height: auto;
-    padding: 18px;
+    padding: 0;
     overflow: visible;
   }
 

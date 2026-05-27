@@ -1,20 +1,9 @@
 import { Navigate, useLocation } from "react-router-dom";
 
-import { useAuth } from "../auth/AuthContext";
-
-function isPlatformAdmin(user) {
-  return Boolean(
-    user
-    && (
-      user.is_platform_admin === true
-      || user.role === "platform_admin"
-      || user.role_code === "platform_admin"
-    )
-  );
-}
+import { usePermissions } from "../app/providers/PermissionProvider";
 
 export function RequirePlatformAdmin({ children }) {
-  const { user, isAuthenticated, isLoading } = useAuth();
+  const { hasHierarchyAccess, isAuthenticated, isLoading, user } = usePermissions();
   const location = useLocation();
 
   if (isLoading) {
@@ -25,7 +14,7 @@ export function RequirePlatformAdmin({ children }) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
-  if (!isPlatformAdmin(user)) {
+  if (!hasHierarchyAccess("platform-admin")) {
     return <Navigate to="/dashboard" replace />;
   }
 

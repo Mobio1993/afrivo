@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../../auth/AuthContext";
+import NetworkAnimation from "./NetworkAnimation";
 import "./LoginPage.css";
 
 function resolveTargetPath(locationState) {
@@ -124,6 +125,14 @@ function extractBackendError(requestError) {
     return payload.detail;
   }
 
+  if (requestError?.status === 429) {
+    return "Trop de tentatives de connexion. Reessayez dans quelques minutes.";
+  }
+
+  if (requestError?.status >= 500) {
+    return "Le serveur AFRIVO ne repond pas correctement. Reessayez dans un instant.";
+  }
+
   if (payload?.errors?.non_field_errors?.length) {
     return payload.errors.non_field_errors.join(" ");
   }
@@ -140,14 +149,16 @@ function extractBackendError(requestError) {
     }
   }
 
-  return requestError?.message || "Connexion impossible. Vérifiez vos identifiants puis réessayez.";
+  return requestError?.message || "Connexion impossible. Verifiez vos identifiants puis reessayez.";
 }
 
 export function LoginPage() {
-  const { login, isAuthenticated, isLoading } = useAuth();
+  const { login, completeTwoFactorLogin, isAuthenticated, isLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const usernameInputRef = useRef(null);
+  const passwordInputRef = useRef(null);
+  const mountedRef = useRef(true);
 
   const [form, setForm] = useState({
     username: "",
@@ -159,6 +170,8 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
+  const [twoFactorChallenge, setTwoFactorChallenge] = useState(null);
+  const [twoFactorCode, setTwoFactorCode] = useState("");
 
   const welcome = useMemo(() => getWelcomeMessage(), []);
   const targetPath = useMemo(() => resolveTargetPath(location.state), [location.state]);
@@ -176,6 +189,10 @@ export function LoginPage() {
       usernameInputRef.current?.focus();
     }
   }, [isLoading, isAuthenticated]);
+
+  useEffect(() => () => {
+    mountedRef.current = false;
+  }, []);
 
   if (!isLoading && isAuthenticated) {
     return <Navigate to={targetPath} replace />;
@@ -202,6 +219,11 @@ export function LoginPage() {
     if (Object.keys(validationErrors).length > 0) {
       setFieldErrors(validationErrors);
       setError("Corrigez les informations manquantes avant de continuer.");
+      if (validationErrors.username) {
+        usernameInputRef.current?.focus();
+      } else if (validationErrors.password) {
+        passwordInputRef.current?.focus();
+      }
       return;
     }
 
@@ -210,17 +232,55 @@ export function LoginPage() {
     setSubmitting(true);
 
     try {
-      await login({
+      const payload = await login({
         username: form.username.trim(),
         password: form.password,
         remember_me: form.remember_me,
       });
 
+      if (!mountedRef.current) return;
+      if (payload?.two_factor_required) {
+        setTwoFactorChallenge(payload);
+        setTwoFactorCode(payload.otp || "");
+        setError("Verification 2FA requise. Saisissez le code envoye par email.");
+        return;
+      }
       navigate(targetPath, { replace: true });
     } catch (requestError) {
-      setError(extractBackendError(requestError));
+      if (mountedRef.current) {
+        setError(extractBackendError(requestError));
+      }
     } finally {
-      setSubmitting(false);
+      if (mountedRef.current) {
+        setSubmitting(false);
+      }
+    }
+  }
+
+  async function handleTwoFactorSubmit(event) {
+    event.preventDefault();
+    if (!twoFactorChallenge?.challenge_id || twoFactorCode.trim().length !== 6) {
+      setError("Saisissez le code 2FA a 6 chiffres pour continuer.");
+      return;
+    }
+
+    setError("");
+    setSubmitting(true);
+    try {
+      await completeTwoFactorLogin({
+        challengeId: twoFactorChallenge.challenge_id,
+        code: twoFactorCode.trim(),
+      });
+      if (!mountedRef.current) return;
+      navigate(targetPath, { replace: true });
+    } catch (requestError) {
+      if (mountedRef.current) {
+        setError(extractBackendError(requestError));
+      }
+    } finally {
+      if (mountedRef.current) {
+        setSubmitting(false);
+      }
     }
   }
 
@@ -229,190 +289,252 @@ export function LoginPage() {
 
   return (
     <div className="login-page login-shell login-shell-luxury">
-      <div className="login-background-orb login-background-orb-a" aria-hidden="true" />
-      <div className="login-background-orb login-background-orb-b" aria-hidden="true" />
-      <div className="login-background-orb login-background-orb-c" aria-hidden="true" />
-      <div className="login-luxury-grid-lines" aria-hidden="true" />
-      <div className="login-noise-layer" aria-hidden="true" />
-
       <div className="login-luxury-layout">
-        <section className="login-luxury-hero">
-          <span className="eyebrow dark login-reveal login-reveal-1">
-            AFRIVO Hospitality Suite
-          </span>
 
-          <div className="login-brand-row login-luxury-brand-row login-reveal login-reveal-2">
-            <div className="login-brand-mark" aria-hidden="true">
-              <span>A</span>
-            </div>
+        {/* ─── Colonne gauche : hero visuel ──────────────────────────────────── */}
+        <section className="login-visual-panel" aria-hidden="true">
+          <div className="login-visual-pattern" />
+          <NetworkAnimation />
 
-            <div className="login-brand-copy">
-              <strong>AFRIVO</strong>
-              <span>Gestion hôtelière moderne</span>
+          <div className="login-visual-topbar">
+            <div className="login-visual-topbar-brand">
+              <div className="login-visual-brand-mark">AF</div>
+              <span className="login-visual-brand-name">AFRIVO</span>
             </div>
+            <span className="login-visual-brand-badge">AFRIVO Hospitality Suite</span>
           </div>
 
-          <div className="login-luxury-copy">
-            <div className="login-copy-badge login-reveal login-reveal-3">
-              <strong>{welcome.title}</strong>
-              <span>{welcome.subtitle}</span>
+          <div className="login-gradient" aria-hidden="true" />
+
+          <div className="login-visual-content">
+            <div className="login-tag">
+              <i className="ti ti-hotel" aria-hidden="true" />
+              Hotel Management
             </div>
-
-            <h1 className="login-reveal login-reveal-4">
-              La plateforme qui donne à votre hôtel une longueur d'avance.
-            </h1>
-
-            <p className="login-reveal login-reveal-5">
-              Gérez la réception, les clients, les opérations et le pilotage
-              quotidien depuis un seul espace clair, rapide et professionnel.
+            <h2 className="login-title">
+              Gérez votre hôtel<br />
+              avec une{" "}
+              <span className="login-title-accent">
+                longueur<br />d'avance.
+              </span>
+            </h2>
+            <p className="login-desc">
+              La plateforme pensée pour les hôteliers africains modernes.
             </p>
-          </div>
-
-          <div className="login-luxury-metrics">
-            <article className="login-luxury-metric-card login-reveal login-reveal-6">
-              <strong>Réception</strong>
-              <span>Réservations, check-in et check-out centralisés en temps réel</span>
-            </article>
-
-            <article className="login-luxury-metric-card login-reveal login-reveal-7">
-              <strong>Clients</strong>
-              <span>Fiches complètes, historiques de séjours et préférences enregistrées</span>
-            </article>
-
-            <article className="login-luxury-metric-card login-reveal login-reveal-8">
-              <strong>Pilotage</strong>
-              <span>KPIs, alertes et rapports d'activité accessibles en un coup d'œil</span>
-            </article>
-          </div>
-
-          <div className="login-luxury-footer-note login-reveal login-reveal-9">
-            <strong>Conçu pour les hôteliers africains</strong>
-            <p>
-              Une solution SaaS multi-établissements pensée pour les réalités
-              terrain, avec un niveau de finition digne des meilleures adresses.
-            </p>
+            <div className="login-stats">
+              <div className="login-stat">
+                <div className="login-stat-value">24/7</div>
+                <div className="login-stat-label">Disponible</div>
+              </div>
+              <div className="login-stat-divider" />
+              <div className="login-stat">
+                <div className="login-stat-value">100%</div>
+                <div className="login-stat-label">Sécurisé</div>
+              </div>
+              <div className="login-stat-divider" />
+              <div className="login-stat">
+                <div className="login-stat-value">Multi</div>
+                <div className="login-stat-label">Établissements</div>
+              </div>
+            </div>
           </div>
         </section>
 
-        <section className="login-panel login-panel-luxury login-reveal login-reveal-4">
-          <div className="login-panel-luxury-glow" aria-hidden="true" />
-          <div className="login-panel-shine" aria-hidden="true" />
+        {/* ─── Colonne droite : formulaire ───────────────────────────────────── */}
+        <section className="login-form-panel">
 
-          <div className="login-panel-luxury-inner">
-            <div className="login-panel-head login-panel-luxury-head login-reveal login-reveal-5">
-              <span className="eyebrow login-panel-badge">Connexion sécurisée</span>
-              <h2>Accédez à votre espace</h2>
-              <p>
-                Identifiez-vous pour reprendre votre activité là où vous l'avez laissée.
-              </p>
+          {/* Mobile brand — masqué sur desktop, visible sur ≤ 1024px */}
+          <div className="login-mobile-brand" aria-hidden="false">
+            <div className="login-visual-brand-mark">A</div>
+            <div>
+              <div className="login-mobile-brand-name">AFRIVO</div>
+              <div className="login-mobile-brand-sub">Gestion hôtelière moderne</div>
             </div>
+          </div>
 
-            {isLoading ? (
-              <div className="status-box login-reveal login-reveal-6" aria-live="polite">
-                Vérification de la session en cours...
-              </div>
-            ) : null}
+          {/* En-tête formulaire */}
+          <div className="login-form-header login-reveal login-reveal-1">
+            <div className="login-time-greeting">
+              <span className="login-time-dot" aria-hidden="true" />
+              <span>{welcome.title}</span>
+            </div>
+            <h2>Accédez à votre espace</h2>
+            <p>Identifiez-vous pour reprendre votre activité.</p>
+          </div>
 
-            {error ? (
-              <div className="alert-box login-reveal login-reveal-6" role="alert" aria-live="polite">
-                {error}
-              </div>
-            ) : null}
+          {/* Status boxes */}
+          {isLoading ? (
+            <div className="status-box login-reveal login-reveal-2" aria-live="polite">
+              Vérification de la session en cours...
+            </div>
+          ) : null}
 
-            <form className="login-form login-form-luxury" onSubmit={handleSubmit} noValidate>
-              <label className="login-field login-reveal login-reveal-6">
-                <span>Identifiant ou email</span>
+          {error ? (
+            <div className="alert-box login-reveal login-reveal-2" role="alert" aria-live="polite">
+              {error}
+            </div>
+          ) : null}
+
+          {/* Formulaire */}
+          <form className="login-form" onSubmit={twoFactorChallenge ? handleTwoFactorSubmit : handleSubmit} noValidate>
+
+            {/* Champ identifiant */}
+            <div className="login-input-field login-reveal login-reveal-3">
+              <label htmlFor="login-username">Identifiant ou email</label>
+              <div
+                className="login-input-box"
+                aria-invalid={Boolean(mergedUsernameError) || undefined}
+              >
+                <span className="login-input-prefix">
+                  <i className="ti ti-user" aria-hidden="true"></i>
+                </span>
                 <input
+                  id="login-username"
+                  className="login-input-native"
                   ref={usernameInputRef}
                   type="text"
                   value={form.username}
                   onChange={(event) => updateField("username", event.target.value)}
                   autoComplete="username"
-                  placeholder="Exemple : admin ou nom@afrivo.com"
+                  placeholder="admin ou nom@afrivo.com"
                   disabled={isBusy}
                   aria-invalid={Boolean(mergedUsernameError)}
                   required
                 />
-                <small>Utilisez vos accès professionnels pour ouvrir votre session.</small>
-                {mergedUsernameError ? (
-                  <em className="field-error">{mergedUsernameError}</em>
-                ) : null}
+              </div>
+              <small>Utilisez vos accès professionnels pour ouvrir votre session.</small>
+              {mergedUsernameError ? (
+                <em className="field-error">{mergedUsernameError}</em>
+              ) : null}
+            </div>
+
+            {/* Champ mot de passe */}
+            <div className="login-input-field login-reveal login-reveal-4">
+              <label htmlFor="login-password">Mot de passe</label>
+              <div
+                className="login-input-box"
+                aria-invalid={Boolean(mergedPasswordError) || undefined}
+              >
+                <span className="login-input-prefix">
+                  <i className="ti ti-lock" aria-hidden="true"></i>
+                </span>
+                <input
+                  id="login-password"
+                  className="login-input-native"
+                  ref={passwordInputRef}
+                  type={showPassword ? "text" : "password"}
+                  value={form.password}
+                  onChange={(event) => updateField("password", event.target.value)}
+                  autoComplete="current-password"
+                  placeholder="Votre mot de passe"
+                  disabled={isBusy}
+                  aria-invalid={Boolean(mergedPasswordError)}
+                  required
+                />
+                <button
+                  type="button"
+                  className="password-toggle"
+                  onClick={() => setShowPassword((current) => !current)}
+                  disabled={isBusy}
+                  aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+                  aria-pressed={showPassword}
+                >
+                  <EyeIcon open={showPassword} />
+                </button>
+              </div>
+              <small>Votre mot de passe reste protégé pendant toute la session.</small>
+              {mergedPasswordError ? (
+                <em className="field-error">{mergedPasswordError}</em>
+              ) : null}
+            </div>
+
+            {/* Remember me */}
+            <div className="login-row login-reveal login-reveal-5">
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={form.remember_me}
+                  onChange={(event) => updateField("remember_me", event.target.checked)}
+                  disabled={isBusy}
+                />
+                <span>Se souvenir de moi</span>
               </label>
+              <span className="login-helper-text">Session sécurisée · AFRIVO</span>
+            </div>
 
-              <label className="login-field login-reveal login-reveal-7">
-                <span>Mot de passe</span>
-
-                <div className="password-field">
+            {twoFactorChallenge ? (
+              <div className="login-input-field login-reveal login-reveal-5">
+                <label htmlFor="login-2fa-code">Code de verification 2FA</label>
+                <div className="login-input-box">
+                  <span className="login-input-prefix">
+                    <i className="ti ti-shield-lock" aria-hidden="true"></i>
+                  </span>
                   <input
-                    type={showPassword ? "text" : "password"}
-                    value={form.password}
-                    onChange={(event) => updateField("password", event.target.value)}
-                    autoComplete="current-password"
-                    placeholder="Saisis ton mot de passe"
+                    id="login-2fa-code"
+                    className="login-input-native"
+                    type="text"
+                    inputMode="numeric"
+                    value={twoFactorCode}
+                    onChange={(event) => setTwoFactorCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                    autoComplete="one-time-code"
+                    placeholder="000000"
                     disabled={isBusy}
-                    aria-invalid={Boolean(mergedPasswordError)}
                     required
                   />
-
-                  <button
-                    type="button"
-                    className="password-toggle"
-                    onClick={() => setShowPassword((current) => !current)}
-                    disabled={isBusy}
-                    aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
-                    aria-pressed={showPassword}
-                  >
-                    <EyeIcon open={showPassword} />
-                  </button>
                 </div>
-
-                <small>Votre mot de passe reste protégé pendant toute la session.</small>
-                {mergedPasswordError ? (
-                  <em className="field-error">{mergedPasswordError}</em>
-                ) : null}
-              </label>
-
-              <div className="login-row login-reveal login-reveal-8">
-                <label className="checkbox-row">
-                  <input
-                    type="checkbox"
-                    checked={form.remember_me}
-                    onChange={(event) => updateField("remember_me", event.target.checked)}
-                    disabled={isBusy}
-                  />
-                  <span>Se souvenir de moi</span>
-                </label>
-
-                <span className="login-helper-text">Session sécurisée · AFRIVO</span>
+                <small>Ce compte est sensible. Une verification supplementaire est obligatoire.</small>
               </div>
+            ) : null}
 
+            {/* Bouton submit */}
+            <button
+              type="submit"
+              className="primary-button login-submit-button login-reveal login-reveal-6"
+              disabled={twoFactorChallenge ? isBusy || twoFactorCode.trim().length !== 6 : !canSubmit}
+            >
+              {isBusy ? (
+                <>
+                  <Spinner />
+                  <span>{twoFactorChallenge ? "Verification..." : "Connexion en cours..."}</span>
+                </>
+              ) : (
+                <span>{twoFactorChallenge ? "Valider le code" : "Se connecter"}</span>
+              )}
+            </button>
+            {twoFactorChallenge ? (
               <button
-                type="submit"
-                className="primary-button login-submit-button login-reveal login-reveal-9"
-                disabled={!canSubmit}
+                type="button"
+                className="secondary-button login-submit-button"
+                disabled={isBusy}
+                onClick={() => {
+                  setTwoFactorChallenge(null);
+                  setTwoFactorCode("");
+                  setError("");
+                }}
               >
-                {isBusy ? (
-                  <>
-                    <Spinner />
-                    <span>Connexion en cours...</span>
-                  </>
-                ) : (
-                  <span>Se connecter</span>
-                )}
+                Revenir a la connexion
               </button>
-            </form>
+            ) : null}
+          </form>
 
-            <div className="login-luxury-trust login-reveal login-reveal-10">
-              <div className="login-luxury-trust-item">
-                <strong>Accès multi-établissements</strong>
-                <span>Un seul compte pour gérer plusieurs hôtels depuis n'importe quel poste</span>
-              </div>
+          <div className="login-form-divider" />
 
-              <div className="login-luxury-trust-item">
-                <strong>Données protégées</strong>
-                <span>Authentification sécurisée — vos informations restent strictement privées</span>
+          {/* Trust footer */}
+          <div className="login-footer-trust">
+            {[
+              { icon: "ti-shield-check", label: "Connexion sécurisée" },
+              { icon: "ti-building-community", label: "Multi-établissements" },
+              { icon: "ti-clock", label: "Disponible 24/7" },
+            ].map((item, i) => (
+              <div
+                key={item.label}
+                className="login-footer-trust-item login-trust-stagger"
+                style={{ animationDelay: `${0.34 + i * 0.12}s` }}
+              >
+                <i className={`ti ${item.icon}`} aria-hidden="true"></i>
+                <span>{item.label}</span>
               </div>
-            </div>
+            ))}
           </div>
         </section>
       </div>

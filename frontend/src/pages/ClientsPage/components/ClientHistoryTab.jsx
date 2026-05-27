@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { AppSelect } from "../../../components/AppSelect";
-import { DatePicker } from "../../../components/DatePicker";
+import { AppSelect } from "../../../shared/components/AppSelect";
+import { DatePicker } from "../../../shared/components/DatePicker";
 import { getClientHistory } from "../../../services/clientsService";
 import { formatAmount, formatDateTime, normalizeValue } from "../utils";
 import { EmptyStateCard } from "./EmptyStateCard";
@@ -143,12 +143,30 @@ export function ClientHistoryTab({ selectedClient }) {
 
           <label className="form-field clients-history-filter-field clients-history-filter-field--date clients-filter-item">
             <span className="form-label">Du</span>
-            <DatePicker value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} name="date_from" placeholder="Choisir une date" />
+            <DatePicker
+              value={dateFrom}
+              onChange={(event) => setDateFrom(event.target.value)}
+              name="date_from"
+              placeholder="Choisir une date"
+              className="clients-compact-date-trigger"
+              popoverClassName="clients-compact-date-popover"
+              popoverMinWidth={236}
+              matchTriggerWidth={false}
+            />
           </label>
 
           <label className="form-field clients-history-filter-field clients-history-filter-field--date clients-filter-item">
             <span className="form-label">Au</span>
-            <DatePicker value={dateTo} onChange={(event) => setDateTo(event.target.value)} name="date_to" placeholder="Choisir une date" />
+            <DatePicker
+              value={dateTo}
+              onChange={(event) => setDateTo(event.target.value)}
+              name="date_to"
+              placeholder="Choisir une date"
+              className="clients-compact-date-trigger"
+              popoverClassName="clients-compact-date-popover"
+              popoverMinWidth={236}
+              matchTriggerWidth={false}
+            />
           </label>
         </div>
       </div>

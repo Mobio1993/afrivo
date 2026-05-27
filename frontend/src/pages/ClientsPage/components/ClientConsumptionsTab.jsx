@@ -1,3 +1,6 @@
+import { useEffect, useState } from "react";
+
+import { getClientConsumptions } from "../../../services/clientsService";
 import { formatAmount, formatDateTime, normalizeValue } from "../utils";
 import { EmptyStateCard } from "./EmptyStateCard";
 
@@ -12,12 +15,34 @@ function PortfolioCard({ label, value, meta }) {
 }
 
 export function ClientConsumptionsTab({ selectedClient }) {
+  const [payload, setPayload] = useState({
+    consumption_portfolio: selectedClient?.consumption_portfolio || {},
+    results: selectedClient?.consumption_history || [],
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!selectedClient?.id) return undefined;
+    setPayload({
+      consumption_portfolio: selectedClient.consumption_portfolio || {},
+      results: selectedClient.consumption_history || [],
+    });
+    setLoading(true);
+    setError("");
+    getClientConsumptions(selectedClient.id)
+      .then((data) => setPayload(data))
+      .catch((requestError) => setError(requestError.message || "Impossible de charger les consommations."))
+      .finally(() => setLoading(false));
+    return undefined;
+  }, [selectedClient?.id]);
+
   if (!selectedClient) {
     return null;
   }
 
-  const portfolio = selectedClient.consumption_portfolio || {};
-  const consumptions = selectedClient.consumption_history || [];
+  const portfolio = payload.consumption_portfolio || {};
+  const consumptions = payload.results || [];
   const byService = portfolio.by_service || [];
 
   return (
@@ -44,6 +69,9 @@ export function ClientConsumptionsTab({ selectedClient }) {
           meta="Consommations marquees comme reglees."
         />
       </div>
+
+      {loading ? <div className="status-box">Chargement des consommations...</div> : null}
+      {error ? <div className="alert-box">{error}</div> : null}
 
       {byService.length ? (
         <div className="clients-consumptions-service-grid">

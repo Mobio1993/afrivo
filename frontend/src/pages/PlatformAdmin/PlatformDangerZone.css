@@ -1,0 +1,96 @@
+.platform-danger-zone {
+  display: grid;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid rgba(163, 45, 45, 0.2);
+  border-radius: var(--radius-md);
+  background: var(--bg-card-strong);
+}
+
+.platform-danger-zone .dz-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid rgba(163, 45, 45, 0.14);
+  background: rgba(252, 235, 235, 0.72);
+  color: #a32d2d;
+}
+
+.platform-danger-zone .dz-header i {
+  margin-top: 2px;
+  font-size: 1.1rem;
+}
+
+.platform-danger-zone .dz-title {
+  color: #7f1d1d;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.platform-danger-zone .dz-sub {
+  margin-top: 4px;
+  color: #854f0b;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.platform-danger-zone .dz-body {
+  padding: 16px 18px;
+}
+
+.platform-danger-zone .dz-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.platform-danger-zone .da-name {
+  color: var(--text-main);
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.platform-danger-zone .da-desc {
+  max-width: 720px;
+  margin-top: 4px;
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.platform-danger-zone .dz-btn {
+  appearance: none;
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 16px;
+  border: 1px solid rgba(163, 45, 45, 0.22);
+  border-radius: 12px;
+  background: #a32d2d;
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.platform-danger-zone .dz-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+@media (max-width: 720px) {
+  .platform-danger-zone .dz-action {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .platform-danger-zone .dz-btn {
+    width: 100%;
+  }
+}

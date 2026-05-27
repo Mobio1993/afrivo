@@ -27,6 +27,28 @@ def perform_check_in(modeladmin, request, queryset):
         )
 
 
+@admin.action(description="Marquer no-show les reservations selectionnees")
+def mark_no_show(modeladmin, request, queryset):
+    updated = 0
+    for booking in queryset.select_related("guest", "room", "room_type"):
+        try:
+            booking.mark_no_show(actor=request.user)
+            updated += 1
+        except ValidationError as exc:
+            modeladmin.message_user(
+                request,
+                f"Reservation {booking.reference}: {exc}",
+                level=messages.ERROR,
+            )
+
+    if updated:
+        modeladmin.message_user(
+            request,
+            f"{updated} reservation(s) marquee(s) no-show avec succes.",
+            level=messages.SUCCESS,
+        )
+
+
 @admin.action(description="Effectuer l'entree day use des elements selectionnes")
 def perform_day_use_check_in(modeladmin, request, queryset):
     updated = 0
@@ -97,7 +119,7 @@ class BookingAdmin(admin.ModelAdmin):
     autocomplete_fields = ("hotel", "guest", "room_type", "room")
     readonly_fields = ("created_at", "updated_at")
     ordering = ("-created_at",)
-    actions = (perform_check_in,)
+    actions = (perform_check_in, mark_no_show)
     save_on_top = True
     fieldsets = (
         (

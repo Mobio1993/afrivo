@@ -8,14 +8,21 @@ from apps.core.api_responses import api_error, api_success
 from apps.billing.models import Payment
 from apps.bookings.models import Booking, DayUse
 from apps.guests.models import Guest
-from apps.history.models import HistoryEntry
+from apps.audit_logs.models import HistoryEntry
+from apps.iam.models import User
+from apps.iam.services.permission_service import user_can_access
+from apps.iam.services.token_service import build_auth_response_payload, resolve_api_user
+from apps.licensing.services.access_service import hotel_subscription_is_active, module_license_is_active
 from apps.rooms.models import Room, RoomType
 from apps.stays.models import Stay
-from apps.tenancy.utils import attach_request_hotel, filter_for_active_hotel, get_user_hotel, hotel_subscription_is_active, is_hotel_scope_strict
-from apps.users.access import user_can_access
-from apps.users.jwt_auth import build_auth_response_payload
-from apps.users.models import User
-from apps.users.jwt_auth import resolve_api_user
+from apps.tenants.services.scope_service import (
+    attach_request_hotel,
+    filter_for_active_hotel,
+    get_user_hotel,
+    is_hotel_scope_strict,
+    is_platform_scope_user,
+    user_has_valid_tenant,
+)
 
 METHOD_PERMISSION_ACTIONS = {
     "GET": "view",
@@ -51,16 +58,25 @@ def module_hotel_scope_required(module_key):
     def decorator(view_func):
         @wraps(view_func)
         def wrapped(request, *args, **kwargs):
+            if not hasattr(request, "active_hotel"):
+                attach_request_hotel(request)
+            user = getattr(request, "user", None)
+            if not is_platform_scope_user(user) and not user_has_valid_tenant(user):
+                return api_error(
+                    detail="Tenant utilisateur invalide ou incoherent.",
+                    http_status=403,
+                    code="tenant_invalid",
+                    module=module_key,
+                )
             if is_hotel_scope_strict(module_key) and getattr(request, "active_hotel", None) is None:
                 return api_error(
                     detail="Un hotel actif est requis pour acceder a ce module.",
                     http_status=403,
-                    code="hotel_required",
+                    code="hotel_user_required",
                     module=module_key,
                 )
             active_hotel = getattr(request, "active_hotel", None)
             if active_hotel is not None and not hotel_subscription_is_active(active_hotel):
-                user = getattr(request, "user", None)
                 if not (user and getattr(user, "is_staff", False)):
                     return api_error(
                         detail="L'abonnement de cet hotel est suspendu ou expire. Contactez l'administration.",
@@ -88,6 +104,26 @@ def module_permission_required(module_key, action=None):
                 code="permission_denied",
                 module=module_key,
                 action=permission_action,
+            )
+
+        return wrapped
+
+    return decorator
+
+
+def module_license_required(module_key):
+    def decorator(view_func):
+        @wraps(view_func)
+        def wrapped(request, *args, **kwargs):
+            active_hotel = getattr(request, "active_hotel", None)
+            organization = getattr(getattr(request, "user", None), "organization", None)
+            if module_license_is_active(module_key, hotel=active_hotel, organization=organization):
+                return view_func(request, *args, **kwargs)
+            return api_error(
+                detail="Ce module n'est pas actif ou sa licence est invalide.",
+                http_status=403,
+                code="module_license_denied",
+                module=module_key,
             )
 
         return wrapped
@@ -144,6 +180,7 @@ def build_dashboard_payload(user, selected_period):
     total_rooms = rooms_queryset.count()
     available_rooms = rooms_queryset.filter(status=Room.Status.AVAILABLE, is_active=True).count()
     occupied_rooms = rooms_queryset.filter(status=Room.Status.OCCUPIED, is_active=True).count()
+    reserved_rooms = rooms_queryset.filter(status=Room.Status.RESERVED, is_active=True).count()
     cleaning_rooms = rooms_queryset.filter(status=Room.Status.CLEANING, is_active=True).count()
     out_of_service_rooms = rooms_queryset.filter(status=Room.Status.OUT_OF_SERVICE).count()
 
@@ -449,6 +486,7 @@ def build_dashboard_payload(user, selected_period):
                 "items": [
                     {"label": "Disponibles", "value": available_rooms},
                     {"label": "Occupees", "value": occupied_rooms},
+                    {"label": "Reservees", "value": reserved_rooms},
                     {"label": "En nettoyage", "value": cleaning_rooms},
                     {"label": "Hors service", "value": out_of_service_rooms},
                 ],

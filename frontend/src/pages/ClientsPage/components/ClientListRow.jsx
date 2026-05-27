@@ -8,8 +8,16 @@ export function ClientListRow({ client, isActive, onSelect }) {
       : "-";
   const clientStatus = normalizeClientStatus(client.client_status);
 
+  const isBlacklisted = Boolean(client.is_blacklisted);
+
   return (
-    <div className={`client-row ${isActive ? "active" : ""}`}>
+    <button
+      type="button"
+      className={`client-row ${isActive ? "active" : ""} ${isBlacklisted ? "is-blacklisted" : ""}`}
+      onClick={onSelect}
+      aria-label={`Afficher les détails de ${client.full_name}`}
+      aria-pressed={isActive}
+    >
       <div className="client-row-avatar" aria-hidden="true">
         {buildInitials(client.full_name)}
       </div>
@@ -18,9 +26,15 @@ export function ClientListRow({ client, isActive, onSelect }) {
         <div className="client-row-top">
           <strong>{normalizeValue(client.full_name)}</strong>
           <div className="client-row-badges">
-            <span className={`client-status-badge client-status-badge--${clientStatus.tone}`}>
-              {clientStatus.label}
-            </span>
+            {isBlacklisted ? (
+              <span className="client-blacklist-badge" title="Client signalé — accès restreint">
+                ⚠ Blacklisté
+              </span>
+            ) : (
+              <span className={`client-status-badge client-status-badge--${clientStatus.tone}`}>
+                {clientStatus.label}
+              </span>
+            )}
             <span className="client-row-badge">{normalizeValue(client.client_type_label)}</span>
             {hasEmail ? <span className="client-row-badge">Email</span> : null}
           </div>
@@ -34,18 +48,6 @@ export function ClientListRow({ client, isActive, onSelect }) {
           <span>{piece}</span>
         </div>
       </div>
-
-      <button
-        type="button"
-        className="client-row-action-btn"
-        onClick={onSelect}
-        aria-label={`Ouvrir la fiche de ${client.full_name}`}
-      >
-        <span>Voir fiche</span>
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M3 8h10M9 4l4 4-4 4" />
-        </svg>
-      </button>
-    </div>
+    </button>
   );
 }

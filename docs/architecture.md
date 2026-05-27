@@ -33,6 +33,8 @@ Organization (niveau SaaS)
 
 Chaque entite metier est scopee par `hotel_id`. Les requetes sont filtrees par le tenant actif quand le module est en mode strict.
 
+La regle d'isolation multi-tenant Phase 3 est documentee dans [Isolation multi-tenant AFRIVO](tenant_isolation.md).
+
 ## Structure du projet
 
 ```text
@@ -59,14 +61,20 @@ AFRIVO/
 
 ## Roles utilisateurs
 
-| Role | Description |
-|------|-------------|
-| `admin` | Acces complet a l'hotel |
-| `manager` | Gestion operationnelle |
-| `reception` | Check-in/out, reservations |
-| `cashier` | Facturation et paiements |
-| `housekeeping` | Gestion des chambres |
-| `restaurant` | Consommations F&B |
+AFRIVO utilise une matrice IAM/RBAC canonique avec hierarchie de roles, permissions module et permissions metier fines.
+
+Documentation de reference: [IAM/RBAC AFRIVO](iam_rbac_matrix.md).
+
+La couche d'autorisation frontend Phase 4 est documentee dans [Frontend IAM/RBAC](frontend_iam.md).
+
+| Role legacy | Role IAM canonique | Description |
+|------|-------------|-------------|
+| `admin` | `HOTEL_ADMIN` | Acces complet a l'hotel |
+| `manager` | `HOTEL_MANAGER` | Gestion operationnelle |
+| `reception` | `RECEPTIONIST` | Check-in/out, reservations |
+| `cashier` | `ACCOUNTANT` | Facturation et paiements |
+| `housekeeping` | `STAFF` / `HOUSEKEEPING` | Gestion des chambres et taches menage |
+| `restaurant` | `STAFF` | Consommations F&B |
 
 ## Modules applicatifs
 
@@ -79,7 +87,8 @@ AFRIVO/
 | `rooms` | Inventaire chambres et types |
 | `bookings` | Reservations et day-use |
 | `stays` | Sejours actifs |
-| `billing` | Factures et paiements |
+| `billing` | Factures, lignes de facture et soldes |
+| `payments` | Encaissements, remboursements et moyens de paiement |
 | `consumptions` | Services |
 | `satisfaction` | Enquetes satisfaction client |
 | `history` | Journal d'audit |

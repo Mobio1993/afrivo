@@ -31,6 +31,10 @@ export function deactivateRoom(roomId) {
   return sendJson(`/api/rooms/${roomId}/`, "DELETE");
 }
 
+export function reactivateRoom(roomId) {
+  return postJson(`/api/rooms/${roomId}/reactivate/`, {});
+}
+
 export function completeRoomCleaning(roomId) {
   return postJson(`/api/rooms/${roomId}/complete-cleaning/`, {});
 }

@@ -24,10 +24,12 @@ import { NavLink } from "react-router-dom";
 
 export const PLATFORM_LINKS_ALL = [
   { to: "/platform",               label: "Vue plateforme", end: true },
-  { to: "/platform/organizations", label: "Organisations" },
+  { to: "/platform/organizations", label: "Clients SaaS" },
   { to: "/platform/hotels",        label: "Hôtels" },
+  { to: "/platform/modules",       label: "Modules" },
+  { to: "/platform/licenses",      label: "Licences" },
   { to: "/platform/subscriptions", label: "Abonnements" },
-  { to: "/platform/users",         label: "Admins" },
+  { to: "/platform/users",         label: "Utilisateurs & acces POS" },
   { to: "/platform/security",      label: "Sécurité" },
 ];
 

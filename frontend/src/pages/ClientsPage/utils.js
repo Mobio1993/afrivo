@@ -86,6 +86,11 @@ const CLIENT_STATUS_MAP = {
     label: "Blacklist",
     tone: "blacklist",
   },
+  inactive: {
+    value: "inactive",
+    label: "Inactif",
+    tone: "standard",
+  },
   standard: {
     value: "standard",
     label: "Standard",

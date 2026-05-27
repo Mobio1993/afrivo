@@ -1,23 +1,41 @@
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Q, Sum
 from django.http import JsonResponse
 from django.utils import timezone
 
-from apps.billing.models import ClientInvoice, Payment
+from apps.billing.models import ClientInvoice, ClientInvoiceItem, Payment
+from apps.billing.services import create_booking_advance_invoice_payment
 from apps.bookings.models import Booking, DayUse
 from apps.consumptions.models import ClientConsumption
-from apps.core.api_views import api_login_required, format_amount, module_hotel_scope_required, module_permission_required
+from apps.core.api_views import api_login_required, format_amount, module_hotel_scope_required, module_license_required, module_permission_required
+from apps.day_use.services import (
+    DayUseAvailabilityService,
+    DayUseConflictService,
+    DayUseLifecycleService,
+    DayUsePaymentService,
+    DayUsePricingService,
+    normalize_datetime,
+)
 from apps.guests.models import Guest
 from apps.history.models import HistoryEntry
-from apps.history.services import log_history
+from apps.audit_logs.services import HotelAuditService
+from apps.iam.services.permission_service import PermissionService
+from apps.licensing.services.access_service import LicensingAccessService
+from apps.operations.services.relocation_service import relocate_booking, relocate_stay, serialize_relocation
 from apps.rooms.models import Room, RoomType
 from apps.stays.models import Stay
-from apps.tenancy.utils import get_request_hotel, scope_queryset_to_hotel
+from apps.tenants.services.tenant_service import TenantService
 from apps.users.models import User
+
+get_request_hotel = TenantService.get_request_hotel
+scope_queryset_to_hotel = TenantService.scope_queryset_to_hotel
+module_license_is_active = LicensingAccessService.module_license_is_active
+log_history = HotelAuditService.log_history
 
 
 def parse_json_body(request):
@@ -27,11 +45,31 @@ def parse_json_body(request):
         raise ValidationError("Requete JSON invalide.")
 
 
+def is_booking_overlap_integrity_error(error):
+    return "booking_no_active_room_overlap" in str(error)
+
+
+def booking_overlap_integrity_response():
+    return JsonResponse(
+        {"errors": {"room": ["Cette chambre est déjà réservée sur cette période."]}},
+        status=400,
+    )
+
+
 def parse_date(value, label):
     try:
         return date.fromisoformat(value)
     except (TypeError, ValueError):
         raise ValidationError({label: "Date invalide."})
+
+
+def validate_booking_start_date(check_in_date):
+    if check_in_date < timezone.localdate():
+        raise ValidationError(
+            {
+                "check_in_date": "La date d'arrivee ne peut pas etre anterieure a aujourd'hui."
+            }
+        )
 
 
 def parse_datetime(value, label):
@@ -57,6 +95,19 @@ def format_date_value(value):
     return value.isoformat() if value else "-"
 
 
+def require_business_action(request, action_code):
+    if PermissionService.can_perform_action(request.user, action_code, strict=True):
+        return None
+    return JsonResponse(
+        {
+            "detail": "Permission metier insuffisante.",
+            "code": "business_permission_denied",
+            "action": action_code,
+        },
+        status=403,
+    )
+
+
 def format_datetime_value(value):
     if not value:
         return "-"
@@ -71,13 +122,21 @@ def hotel_scoped_get(queryset, request, **lookup):
     return hotel_scoped(queryset, request).get(**lookup)
 
 
+def active_guest_queryset():
+    return Guest.objects.filter(is_active=True, is_blacklisted=False)
+
+
+def hotel_scoped_active_guest_get(request, **lookup):
+    return hotel_scoped_get(active_guest_queryset(), request, **lookup)
+
+
 def serialize_guest(item):
     return {
         "id": item.id,
         "full_name": item.full_name,
         "phone": item.phone or "-",
         "email": item.email or "-",
-        "country": item.country or "-",
+        "nationality": item.nationality or "-",
         "is_blacklisted": item.is_blacklisted,
     }
 
@@ -86,7 +145,9 @@ def serialize_room(item):
     return {
         "id": item.id,
         "number": item.number,
+        "room_type_id": item.room_type_id,
         "status": item.get_status_display(),
+        "status_code": item.status,
         "floor": item.floor or "-",
         "room_type": item.room_type.name,
         "room_type_code": item.room_type.code,
@@ -175,6 +236,57 @@ def serialize_invoice(item):
     }
 
 
+def find_active_payment_invoice(*, hotel, client, booking=None, stay=None):
+    queryset = ClientInvoice.objects.filter(
+        hotel=hotel,
+        client=client,
+        status__in=[
+            ClientInvoice.Status.DRAFT,
+            ClientInvoice.Status.ISSUED,
+            ClientInvoice.Status.PARTIALLY_PAID,
+        ],
+        balance_due__gt=0,
+    )
+    if stay is not None:
+        queryset = queryset.filter(stay=stay)
+    elif booking is not None:
+        queryset = queryset.filter(reservation=booking)
+    else:
+        return None
+    return queryset.order_by("-issued_at", "-id").first()
+
+
+def create_operation_advance_invoice(*, hotel, client, amount, user=None, booking=None, stay=None):
+    reference_target = stay.reference if stay is not None else booking.reference if booking is not None else "client"
+    label_prefix = "Avance sejour" if stay is not None else "Avance reservation"
+    description = (
+        f"Encaissement rapide avant facture finale du sejour {reference_target}."
+        if stay is not None
+        else f"Encaissement rapide avant confirmation/facture finale de la reservation {reference_target}."
+    )
+
+    invoice = ClientInvoice.objects.create(
+        hotel=hotel,
+        client=client,
+        reservation=booking or (stay.booking if stay and stay.booking_id else None),
+        issued_by=user if getattr(user, "is_authenticated", False) else None,
+        status=ClientInvoice.Status.DRAFT,
+        source=ClientInvoice.Source.OTHER,
+        notes=f"Facture d'avance generee automatiquement depuis l'encaissement rapide {reference_target}.",
+    )
+    ClientInvoiceItem.objects.create(
+        invoice=invoice,
+        label=f"{label_prefix} {reference_target}",
+        description=description,
+        quantity=Decimal("1.00"),
+        unit_price=amount,
+        room=stay.room if stay is not None else booking.room if booking is not None else None,
+    )
+    invoice.issue()
+    invoice.refresh_from_db()
+    return invoice
+
+
 def serialize_booking(item):
     return {
         "id": item.id,
@@ -187,7 +299,7 @@ def serialize_booking(item):
         "check_in_date": item.check_in_date.isoformat(),
         "check_out_date": item.check_out_date.isoformat(),
         "estimated_amount": format_amount(item.estimated_amount),
-        "can_check_in": item.status == Booking.Status.CONFIRMED,
+        "can_check_in": can_check_in_booking(item),
         "detail_path": f"/operations/bookings/{item.id}",
     }
 
@@ -233,6 +345,157 @@ def serialize_day_use(item):
         "can_check_in": item.status == DayUse.Status.READY,
         "can_check_out": item.status == DayUse.Status.IN_PROGRESS,
         "detail_path": f"/operations/day-uses/{item.id}",
+    }
+
+
+def amount_to_float(value):
+    if value is None:
+        return 0.0
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def as_decimal(value):
+    if value is None:
+        return Decimal("0.00")
+    if isinstance(value, Decimal):
+        return value
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return Decimal("0.00")
+
+
+def resolve_payment_status(total_amount, paid_amount):
+    total = as_decimal(total_amount)
+    paid = as_decimal(paid_amount)
+    if paid <= Decimal("0.00"):
+        return "unpaid"
+    if total > Decimal("0.00") and paid >= total:
+        return "paid"
+    if total <= Decimal("0.00") and paid > Decimal("0.00"):
+        return "paid"
+    return "partial"
+
+
+def linked_payment_room(payment):
+    if payment.booking_id and payment.booking and payment.booking.room_id:
+        return payment.booking.room.number
+    if payment.stay_id and payment.stay and payment.stay.room_id:
+        return payment.stay.room.number
+    if payment.day_use_id and payment.day_use and payment.day_use.room_id:
+        return payment.day_use.room.number
+    return "-"
+
+
+def serialize_all_booking(item):
+    amount = item.estimated_amount or Decimal("0.00")
+    paid_amount = getattr(item, "paid_total", None) or Decimal("0.00")
+    return {
+        "id": str(item.id),
+        "entity_type": "bookings",
+        "operation_type": "booking",
+        "type_label": "Reservation",
+        "reference": item.reference,
+        "client_name": item.guest.full_name if item.guest_id else "-",
+        "room_name": item.room.number if item.room_id else "-",
+        "start_date": format_date_value(item.check_in_date),
+        "end_date": format_date_value(item.check_out_date),
+        "status": item.get_status_display(),
+        "status_code": item.status,
+        "amount": amount_to_float(amount),
+        "amount_display": format_amount(amount),
+        "paid_amount": amount_to_float(paid_amount),
+        "paid_amount_display": format_amount(paid_amount),
+        "payment_status": resolve_payment_status(amount, paid_amount),
+        "created_at": format_datetime_value(item.created_at),
+        "sort_date": item.check_in_date.isoformat() if item.check_in_date else format_datetime_value(item.created_at),
+        "detail_url": f"/operations/bookings/{item.id}",
+    }
+
+
+def serialize_all_stay(item):
+    totals = item.get_financial_totals()
+    amount = totals.get("total_amount") or Decimal("0.00")
+    paid_amount = totals.get("total_paid") or Decimal("0.00")
+    start_value = item.actual_check_in or item.check_in_at or item.planned_check_in or item.created_at
+    end_value = item.actual_check_out or item.check_out_at or item.planned_check_out
+    return {
+        "id": str(item.id),
+        "entity_type": "stays",
+        "operation_type": "stay",
+        "type_label": "Sejour",
+        "reference": item.reference,
+        "client_name": item.guest.full_name if item.guest_id else "-",
+        "room_name": item.room.number if item.room_id else "-",
+        "start_date": format_datetime_value(start_value),
+        "end_date": format_datetime_value(end_value),
+        "status": item.get_status_display(),
+        "status_code": item.status,
+        "amount": amount_to_float(amount),
+        "amount_display": format_amount(amount),
+        "paid_amount": amount_to_float(paid_amount),
+        "paid_amount_display": format_amount(paid_amount),
+        "payment_status": resolve_payment_status(amount, paid_amount),
+        "created_at": format_datetime_value(item.created_at),
+        "sort_date": format_datetime_value(start_value),
+        "detail_url": f"/operations/stays/{item.id}",
+    }
+
+
+def serialize_all_day_use(item):
+    amount = getattr(item, "final_amount", None) or item.total_amount or Decimal("0.00")
+    paid_amount = getattr(item, "amount_paid", None) or getattr(item, "paid_amount", None) or Decimal("0.00")
+    start_value = item.start_datetime or item.planned_entry_at or item.created_at
+    end_value = item.end_datetime or getattr(item, "check_out_at", None)
+    return {
+        "id": str(item.id),
+        "entity_type": "day-uses",
+        "operation_type": "day_use",
+        "type_label": "Day Use",
+        "reference": item.reference,
+        "client_name": item.guest.full_name if item.guest_id else "-",
+        "room_name": item.room.number if item.room_id else "-",
+        "start_date": format_datetime_value(start_value),
+        "end_date": format_datetime_value(end_value),
+        "status": item.get_status_display(),
+        "status_code": item.status,
+        "amount": amount_to_float(amount),
+        "amount_display": format_amount(amount),
+        "paid_amount": amount_to_float(paid_amount),
+        "paid_amount_display": format_amount(paid_amount),
+        "payment_status": item.payment_status or resolve_payment_status(amount, paid_amount),
+        "created_at": format_datetime_value(item.created_at),
+        "sort_date": format_datetime_value(start_value),
+        "detail_url": f"/operations/day-uses/{item.id}",
+    }
+
+
+def serialize_all_payment(item):
+    amount = item.amount or Decimal("0.00")
+    payment_status = "paid" if item.status == Payment.Status.PAID else "unpaid"
+    return {
+        "id": str(item.id),
+        "entity_type": "payments",
+        "operation_type": "payment",
+        "type_label": "Paiement",
+        "reference": item.reference,
+        "client_name": item.client.full_name if item.client_id else "-",
+        "room_name": linked_payment_room(item),
+        "start_date": format_datetime_value(item.paid_at),
+        "end_date": "-",
+        "status": item.get_status_display(),
+        "status_code": item.status,
+        "amount": amount_to_float(amount),
+        "amount_display": format_amount(amount),
+        "paid_amount": amount_to_float(amount) if payment_status == "paid" else 0.0,
+        "paid_amount_display": format_amount(amount if payment_status == "paid" else Decimal("0.00")),
+        "payment_status": payment_status,
+        "created_at": format_datetime_value(item.created_at),
+        "sort_date": format_datetime_value(item.paid_at or item.created_at),
+        "detail_url": f"/operations/payments/{item.id}",
     }
 
 
@@ -297,6 +560,10 @@ def serialize_choice_options(choices):
     return [{"value": value, "label": label} for value, label in choices]
 
 
+def can_check_in_booking(booking):
+    return booking.status == Booking.Status.CONFIRMED and booking.check_in_date <= timezone.localdate()
+
+
 def priority_payload(level, label, sla):
     return {
         "level": level,
@@ -313,24 +580,16 @@ def serialize_supervisor_user(user):
     }
 
 
-def serialize_supervisor_history(item):
-    actor = item.actor.get_full_name() or item.actor.username if item.actor else "Systeme"
-    return {
-        "id": item.id,
-        "label": item.get_action_type_display(),
-        "reference": item.entity_reference,
-        "description": item.description,
-        "actor": actor,
-        "module": item.module,
-        "created_at": format_datetime_value(item.created_at),
-    }
-
-
 def build_booking_detail(booking):
     stay = get_booking_stay(booking)
     paid_total = booking.payments.filter(status=Payment.Status.PAID).aggregate(total=Sum("amount"))["total"] or 0
     balance_total = booking.estimated_amount - paid_total
     payments = [serialize_payment(item) for item in booking.payments.order_by("-paid_at", "-id")[:10]]
+    invoices_queryset = ClientInvoice.objects.filter(reservation=booking).prefetch_related("items", "payments")
+    invoices = [serialize_invoice(item) for item in invoices_queryset.order_by("-issued_at", "-id")[:10]]
+    alerts = []
+    if booking.payments.filter(invoice_id__isnull=True).exists():
+        alerts.append("Un ou plusieurs paiements de cette reservation ne sont pas rattaches a une facture.")
     timeline = get_history_entries([booking.reference, stay.reference if stay else None])
     related_actions = get_related_actions(
         [
@@ -338,7 +597,7 @@ def build_booking_detail(booking):
                 "label": "Effectuer le check-in",
                 "kind": "mutation",
                 "endpoint": f"/api/operations/bookings/{booking.id}/check-in/",
-                "enabled": booking.status == Booking.Status.CONFIRMED and bool(booking.room_id),
+                "enabled": can_check_in_booking(booking) and bool(booking.room_id),
                 "variant": "primary",
             },
             {
@@ -353,6 +612,13 @@ def build_booking_detail(booking):
                 "kind": "mutation",
                 "endpoint": f"/api/operations/bookings/{booking.id}/cancel/",
                 "enabled": booking.status in {Booking.Status.PENDING, Booking.Status.CONFIRMED},
+                "variant": "danger",
+            },
+            {
+                "label": "Marquer no-show",
+                "kind": "mutation",
+                "endpoint": f"/api/operations/bookings/{booking.id}/no-show/",
+                "enabled": booking.status == Booking.Status.CONFIRMED and not stay,
                 "variant": "danger",
             },
             {
@@ -371,7 +637,24 @@ def build_booking_detail(booking):
         "title": booking.reference,
         "subtitle": "Fiche detaillee de reservation avec client, hebergement, encaissements et historique.",
         "status": booking.get_status_display(),
+        "status_code": booking.status,
+        "id": booking.id,
         "reference": booking.reference,
+        "can_check_in": can_check_in_booking(booking) and bool(booking.room_id),
+        "check_in_date": format_date_value(booking.check_in_date) if booking.check_in_date else "",
+        "check_out_date": format_date_value(booking.check_out_date) if booking.check_out_date else "",
+        "adults": booking.adults,
+        "children": booking.children,
+        "source": booking.get_source_display(),
+        "source_code": booking.source,
+        "estimated_amount": format_amount(booking.estimated_amount),
+        "paid_amount": format_amount(paid_total),
+        "remaining_balance": format_amount(balance_total if balance_total > 0 else 0),
+        "notes": booking.notes or "",
+        "stay_detail_path": f"/operations/stays/{stay.id}" if stay else "",
+        "invoice_reference": invoices[0]["reference"] if invoices else "",
+        "alerts": alerts,
+        "room_id": booking.room_id,
         "room_type_id": booking.room_type_id,
         "summary_cards": [
             {"label": "Montant estime", "value": format_amount(booking.estimated_amount), "meta": "Montant saisi a la creation"},
@@ -386,7 +669,7 @@ def build_booking_detail(booking):
                     {"label": "Nom", "value": booking.guest.full_name},
                     {"label": "Telephone", "value": booking.guest.phone or "-"},
                     {"label": "Email", "value": booking.guest.email or "-"},
-                    {"label": "Pays", "value": booking.guest.country or "-"},
+                    {"label": "Nationalite", "value": booking.guest.nationality or "-"},
                 ],
             },
             {
@@ -411,6 +694,7 @@ def build_booking_detail(booking):
         "related_records": {
             "payments": payments,
             "stay": serialize_stay(stay) if stay else None,
+            "invoices": invoices,
         },
         "timeline": timeline,
         "guest": serialize_guest(booking.guest),
@@ -461,12 +745,13 @@ def build_booking_detail(booking):
                 },
             }
         ]
-        if booking.status == Booking.Status.CONFIRMED
+        if can_check_in_booking(booking)
         else [],
     }
 
 
 def build_stay_detail(stay):
+    financial_totals = stay.get_financial_totals()
     paid_total = stay.payments.filter(status=Payment.Status.PAID).aggregate(total=Sum("amount"))["total"] or 0
     consumptions_queryset = stay.consumptions.select_related("service_department", "reservation", "room")
     consumption_total = (
@@ -486,10 +771,11 @@ def build_stay_detail(stay):
             "fields": {
                 "planned_check_out": format_datetime_value(stay.planned_check_out) if stay.planned_check_out else "",
                 "expected_check_out_date": format_date_value(stay.expected_check_out_date) if stay.expected_check_out_date else "",
-                "adults": stay.adults,
                 "adults_count": stay.adults_count,
-                "children": stay.children,
                 "children_count": stay.children_count,
+                # Aliases pour compatibilité frontend transitoire
+                "adults": stay.adults_count,
+                "children": stay.children_count,
                 "number_of_guests": stay.number_of_guests,
                 "purpose_of_stay": stay.purpose_of_stay or "",
                 "special_requests": stay.special_requests or "",
@@ -501,11 +787,15 @@ def build_stay_detail(stay):
         "title": stay.reference,
         "subtitle": "Fiche detaillee du sejour en cours ou termine, avec chambre, reservation d'origine et historique.",
         "status": stay.get_status_display(),
+        "status_code": stay.status,
         "reference": stay.reference,
+        "room_id": stay.room_id,
+        "room_type_id": stay.room.room_type_id,
         "summary_cards": [
             {"label": "Montant encaisse", "value": format_amount(paid_total), "meta": "Paiements valides lies a ce sejour"},
             {"label": "Consommations", "value": format_amount(consumption_total), "meta": "Montant cumule hors lignes annulees"},
             {"label": "Factures", "value": format_amount(invoices_total), "meta": "Montant total des factures liees a ce sejour"},
+            {"label": "Solde restant", "value": format_amount(financial_totals["unpaid_balance"]), "meta": "Montant du encore visible apres check-out non bloquant"},
             {"label": "Arrivee prevue", "value": format_datetime_value(stay.planned_check_in), "meta": "Donnee previsionnelle de sejour"},
             {"label": "Depart prevu", "value": format_datetime_value(stay.planned_check_out), "meta": "Cible operationnelle actuelle"},
             {"label": "Occupation", "value": f"{stay.number_of_guests} occupant(s)", "meta": f"{stay.adults_count} adulte(s) / {stay.children_count} enfant(s)"},
@@ -517,7 +807,7 @@ def build_stay_detail(stay):
                     {"label": "Nom", "value": stay.guest.full_name},
                     {"label": "Telephone", "value": stay.guest.phone or "-"},
                     {"label": "Email", "value": stay.guest.email or "-"},
-                    {"label": "Pays", "value": stay.guest.country or "-"},
+                    {"label": "Nationalite", "value": stay.guest.nationality or "-"},
                 ],
             },
             {
@@ -636,7 +926,7 @@ def build_day_use_detail(day_use):
                     {"label": "Nom", "value": day_use.guest.full_name},
                     {"label": "Telephone", "value": day_use.guest.phone or "-"},
                     {"label": "Email", "value": day_use.guest.email or "-"},
-                    {"label": "Pays", "value": day_use.guest.country or "-"},
+                    {"label": "Nationalite", "value": day_use.guest.nationality or "-"},
                 ],
             },
             {
@@ -935,10 +1225,13 @@ def operations_choices_api(request):
 
 @api_login_required
 @module_hotel_scope_required("operations")
+@module_license_required("reservations")
 @module_permission_required("operations", action="view")
 def bookings_list_api(request):
     status = request.GET.get("status", "").strip()
     search = request.GET.get("search", "").strip()
+    date_from = request.GET.get("date_from", "").strip()
+    date_to = request.GET.get("date_to", "").strip()
     queryset = hotel_scoped(Booking.objects.select_related("guest", "room_type", "room").order_by("-created_at"), request)
     if status:
         queryset = queryset.filter(status=status)
@@ -949,6 +1242,16 @@ def bookings_list_api(request):
             | Q(guest__last_name__icontains=search)
             | Q(room__number__icontains=search)
         )
+    if date_from:
+        try:
+            queryset = queryset.filter(check_in_date__gte=date.fromisoformat(date_from))
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            queryset = queryset.filter(check_in_date__lte=date.fromisoformat(date_to))
+        except ValueError:
+            pass
 
     return JsonResponse({"results": [serialize_booking(item) for item in queryset[:30]]})
 
@@ -978,6 +1281,7 @@ def stays_list_api(request):
 
 @api_login_required
 @module_hotel_scope_required("operations")
+@module_license_required("day_use")
 @module_permission_required("operations", action="view")
 def day_uses_list_api(request):
     queryset = hotel_scoped(DayUse.objects.select_related("guest", "room").order_by("-created_at"), request)
@@ -986,6 +1290,7 @@ def day_uses_list_api(request):
 
 @api_login_required
 @module_hotel_scope_required("operations")
+@module_license_required("billing")
 @module_permission_required("operations", action="view")
 def payments_list_api(request):
     queryset = hotel_scoped(
@@ -997,6 +1302,266 @@ def payments_list_api(request):
 
 @api_login_required
 @module_hotel_scope_required("operations")
+@module_permission_required("operations", action="view")
+def all_operations_api(request):
+    search = request.GET.get("search", "").strip()
+    raw_operation_type = request.GET.get("type", "").strip()
+    status = request.GET.get("status", "").strip()
+    payment_status = request.GET.get("payment_status", "").strip()
+    date_from = request.GET.get("date_from", "").strip()
+    date_to = request.GET.get("date_to", "").strip()
+    room = request.GET.get("room", "").strip()
+    ordering = request.GET.get("ordering", "").strip()
+    sort_key = request.GET.get("sort", "created").strip() or "created"
+    order = request.GET.get("order", "desc").strip().lower()
+
+    type_aliases = {
+        "": "",
+        "all": "",
+        "booking": "bookings",
+        "bookings": "bookings",
+        "reservation": "bookings",
+        "reservations": "bookings",
+        "stay": "stays",
+        "stays": "stays",
+        "dayuse": "day-uses",
+        "day_use": "day-uses",
+        "day-use": "day-uses",
+        "day-uses": "day-uses",
+        "payment": "payments",
+        "payments": "payments",
+    }
+    operation_type = type_aliases.get(raw_operation_type, raw_operation_type)
+
+    if ordering:
+        ordering_map = {
+            "-created_at": ("created", "desc"),
+            "created_at": ("created", "asc"),
+            "-amount": ("amount", "desc"),
+            "amount": ("amount", "asc"),
+            "client__name": ("client", "asc"),
+            "type": ("type", "asc"),
+            "-type": ("type", "desc"),
+            "status": ("status", "asc"),
+            "-status": ("status", "desc"),
+        }
+        sort_key, order = ordering_map.get(ordering, (sort_key, order))
+
+    try:
+        page = max(int(request.GET.get("page", "1")), 1)
+    except ValueError:
+        page = 1
+    try:
+        page_size = min(max(int(request.GET.get("page_size", "25")), 5), 100)
+    except ValueError:
+        page_size = 25
+
+    parsed_from = None
+    parsed_to = None
+    if date_from:
+        try:
+            parsed_from = date.fromisoformat(date_from)
+        except ValueError:
+            parsed_from = None
+    if date_to:
+        try:
+            parsed_to = date.fromisoformat(date_to)
+        except ValueError:
+            parsed_to = None
+
+    include_all = not operation_type
+    active_hotel = getattr(request, "active_hotel", None) or get_request_hotel(request)
+    organization = getattr(getattr(request, "user", None), "organization", None)
+    license_by_type = {
+        "bookings": module_license_is_active("reservations", hotel=active_hotel, organization=organization),
+        "day-uses": module_license_is_active("day_use", hotel=active_hotel, organization=organization),
+        "payments": module_license_is_active("billing", hotel=active_hotel, organization=organization),
+    }
+    if operation_type in license_by_type and not license_by_type[operation_type]:
+        return JsonResponse(
+            {
+                "detail": "Ce module n'est pas actif ou sa licence est invalide.",
+                "code": "module_license_denied",
+                "module": operation_type,
+            },
+            status=403,
+        )
+    operations = []
+
+    if (include_all and license_by_type["bookings"]) or operation_type == "bookings":
+        bookings = hotel_scoped(
+            Booking.objects.select_related("guest", "room")
+            .annotate(paid_total=Sum("payments__amount", filter=Q(payments__status=Payment.Status.PAID)))
+            .order_by("-check_in_date", "-id"),
+            request,
+        )
+        if status:
+            bookings = bookings.filter(status=status)
+        if search:
+            bookings = bookings.filter(
+                Q(reference__icontains=search)
+                | Q(guest__first_name__icontains=search)
+                | Q(guest__last_name__icontains=search)
+                | Q(room__number__icontains=search)
+            )
+        if room:
+            bookings = bookings.filter(room__number__icontains=room)
+        if parsed_from:
+            bookings = bookings.filter(check_in_date__gte=parsed_from)
+        if parsed_to:
+            bookings = bookings.filter(check_in_date__lte=parsed_to)
+        operations.extend(serialize_all_booking(item) for item in bookings)
+
+    if include_all or operation_type == "stays":
+        stays = hotel_scoped(
+            Stay.objects.select_related("guest", "room", "booking").order_by("-check_in_at", "-id"),
+            request,
+        )
+        if status:
+            stays = stays.filter(status=status)
+        if search:
+            stays = stays.filter(
+                Q(reference__icontains=search)
+                | Q(guest__first_name__icontains=search)
+                | Q(guest__last_name__icontains=search)
+                | Q(room__number__icontains=search)
+                | Q(booking__reference__icontains=search)
+            )
+        if room:
+            stays = stays.filter(room__number__icontains=room)
+        if parsed_from:
+            stays = stays.filter(created_at__date__gte=parsed_from)
+        if parsed_to:
+            stays = stays.filter(created_at__date__lte=parsed_to)
+        operations.extend(serialize_all_stay(item) for item in stays)
+
+    if (include_all and license_by_type["day-uses"]) or operation_type == "day-uses":
+        day_uses = hotel_scoped(DayUse.objects.select_related("guest", "room").order_by("-created_at", "-id"), request)
+        if status:
+            day_uses = day_uses.filter(status=status)
+        if search:
+            day_uses = day_uses.filter(
+                Q(reference__icontains=search)
+                | Q(guest__first_name__icontains=search)
+                | Q(guest__last_name__icontains=search)
+                | Q(room__number__icontains=search)
+            )
+        if room:
+            day_uses = day_uses.filter(room__number__icontains=room)
+        if parsed_from:
+            day_uses = day_uses.filter(created_at__date__gte=parsed_from)
+        if parsed_to:
+            day_uses = day_uses.filter(created_at__date__lte=parsed_to)
+        operations.extend(serialize_all_day_use(item) for item in day_uses)
+
+    if (include_all and license_by_type["payments"]) or operation_type == "payments":
+        payments = hotel_scoped(
+            Payment.objects.select_related(
+                "client",
+                "booking__room",
+                "stay__room",
+                "day_use__room",
+                "invoice",
+            ).order_by("-paid_at", "-id"),
+            request,
+        )
+        if status:
+            payments = payments.filter(status=status)
+        if search:
+            payments = payments.filter(
+                Q(reference__icontains=search)
+                | Q(client__first_name__icontains=search)
+                | Q(client__last_name__icontains=search)
+                | Q(booking__reference__icontains=search)
+                | Q(booking__room__number__icontains=search)
+                | Q(stay__reference__icontains=search)
+                | Q(stay__room__number__icontains=search)
+                | Q(day_use__reference__icontains=search)
+                | Q(day_use__room__number__icontains=search)
+                | Q(invoice__reference__icontains=search)
+            )
+        if room:
+            payments = payments.filter(
+                Q(booking__room__number__icontains=room)
+                | Q(stay__room__number__icontains=room)
+                | Q(day_use__room__number__icontains=room)
+            )
+        if parsed_from:
+            payments = payments.filter(created_at__date__gte=parsed_from)
+        if parsed_to:
+            payments = payments.filter(created_at__date__lte=parsed_to)
+        operations.extend(serialize_all_payment(item) for item in payments)
+
+    if payment_status:
+        operations = [item for item in operations if item["payment_status"] == payment_status]
+
+    sort_map = {
+        "date": lambda item: item.get("sort_date") or "",
+        "created": lambda item: item.get("created_at") or "",
+        "amount": lambda item: item.get("amount") or 0,
+        "status": lambda item: item.get("status") or "",
+        "type": lambda item: item.get("type_label") or "",
+        "client": lambda item: item.get("client_name") or "",
+    }
+    operations.sort(key=sort_map.get(sort_key, sort_map["date"]), reverse=order != "asc")
+
+    total = len(operations)
+    total_pages = (total + page_size - 1) // page_size if total else 1
+    start = (page - 1) * page_size
+    end = start + page_size
+    results = operations[start:end]
+
+    by_type = {
+        "booking": sum(1 for item in operations if item["operation_type"] == "booking"),
+        "stay": sum(1 for item in operations if item["operation_type"] == "stay"),
+        "dayuse": sum(1 for item in operations if item["operation_type"] == "day_use"),
+        "payment": sum(1 for item in operations if item["operation_type"] == "payment"),
+    }
+    by_payment_status = {
+        "paid": sum(1 for item in operations if item["payment_status"] == "paid"),
+        "partial": sum(1 for item in operations if item["payment_status"] == "partial"),
+        "unpaid": sum(1 for item in operations if item["payment_status"] == "unpaid"),
+    }
+    by_status = {}
+    for item in operations:
+        status_key = item.get("status_code") or item.get("status") or "unknown"
+        by_status[status_key] = by_status.get(status_key, 0) + 1
+    total_amount = sum(as_decimal(item.get("amount")) for item in operations)
+
+    summary = {
+        "total": total,
+        "total_count": total,
+        "bookings": by_type["booking"],
+        "bookings_count": by_type["booking"],
+        "stays": by_type["stay"],
+        "day_uses": by_type["dayuse"],
+        "payments": by_type["payment"],
+        "stays_dayuse_count": by_type["stay"] + by_type["dayuse"],
+        "amount": amount_to_float(total_amount),
+        "total_amount": amount_to_float(total_amount),
+        "amount_display": format_amount(total_amount),
+        "by_type": by_type,
+        "by_payment_status": by_payment_status,
+        "by_status": by_status,
+    }
+
+    return JsonResponse(
+        {
+            "results": results,
+            "count": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "next": page + 1 if page < total_pages else None,
+            "previous": page - 1 if page > 1 else None,
+            "summary": summary,
+        }
+    )
+
+
+@api_login_required
+@module_hotel_scope_required("operations")
+@module_license_required("reservations")
 @module_permission_required("operations", action="view")
 def booking_detail_api(request, booking_id):
     try:
@@ -1027,6 +1592,7 @@ def stay_detail_api(request, stay_id):
 
 @api_login_required
 @module_hotel_scope_required("operations")
+@module_license_required("day_use")
 @module_permission_required("operations", action="view")
 def day_use_detail_api(request, day_use_id):
     try:
@@ -1038,6 +1604,7 @@ def day_use_detail_api(request, day_use_id):
 
 @api_login_required
 @module_hotel_scope_required("operations")
+@module_license_required("billing")
 @module_permission_required("operations", action="view")
 def payment_detail_api(request, payment_id):
     try:
@@ -1067,7 +1634,6 @@ def payment_detail_api(request, payment_id):
 @module_permission_required("operations", action="view")
 def operations_board_api(request):
     search = request.GET.get("search", "").strip()
-    actor_id = request.GET.get("actor_id", "").strip()
     today = timezone.localdate()
 
     arrivals_queryset = hotel_scoped(Booking.objects.select_related("guest", "room_type", "room"), request).filter(
@@ -1158,23 +1724,6 @@ def operations_board_api(request):
         payload["priority"] = priority_payload("medium", "Sortie a suivre", "Avant remise en nettoyage")
         day_use_in_progress.append(payload)
 
-    supervisor_users_queryset = hotel_scoped(
-        User.objects.filter(is_active=True, role=User.Role.RECEPTION),
-        request,
-    ).order_by("first_name", "last_name", "username")
-    supervisor_users = [serialize_supervisor_user(item) for item in supervisor_users_queryset]
-
-    journal_queryset = HistoryEntry.objects.select_related("actor").filter(
-        module__in=["bookings", "stays", "billing", "rooms"]
-    )
-    active_hotel = get_request_hotel(request)
-    if active_hotel is not None:
-        journal_queryset = journal_queryset.filter(hotel=active_hotel)
-    if actor_id.isdigit():
-        journal_queryset = journal_queryset.filter(actor_id=int(actor_id))
-    journal_queryset = journal_queryset.order_by("-created_at", "-id")[:20]
-    journal = [serialize_supervisor_history(item) for item in journal_queryset]
-
     notifications = []
     if arrivals:
         notifications.append(
@@ -1200,21 +1749,10 @@ def operations_board_api(request):
                 "message": f"{len(day_use_cash)} day use demandent un encaissement avant entree.",
             }
         )
-    if len(journal) >= 8:
-        notifications.append(
-            {
-                "level": "low",
-                "title": "Activite soutenue reception",
-                "message": f"{len(journal)} action(s) recentes remontees dans le journal d'exploitation.",
-            }
-        )
-
     return JsonResponse(
         {
             "date": today.isoformat(),
             "search": search,
-            "actor_id": actor_id,
-            "supervisor_users": supervisor_users,
             "summary_cards": [
                 {"label": "Arrivees du jour", "value": len(arrivals), "meta": "Reservations a accueillir aujourd'hui"},
                 {"label": "Departs du jour", "value": len(departures), "meta": "Sejours a cloturer aujourd'hui"},
@@ -1222,7 +1760,6 @@ def operations_board_api(request):
                 {"label": "Day use a encaisser", "value": len(day_use_cash), "meta": "Paiements a regulariser avant entree"},
             ],
             "notifications": notifications,
-            "journal": journal,
             "queues": {
                 "arrivals": arrivals,
                 "departures": departures,
@@ -1237,6 +1774,7 @@ def operations_board_api(request):
 
 @api_login_required
 @module_hotel_scope_required("operations")
+@module_license_required("reservations")
 @module_permission_required("operations", action="update")
 def update_booking_api(request, booking_id):
     if request.method != "POST":
@@ -1250,7 +1788,9 @@ def update_booking_api(request, booking_id):
             raise ValidationError({"room_id": "La chambre ne peut plus etre modifiee apres creation du sejour."})
         booking.room_id = next_room_id
         booking.source = payload.get("source") or booking.source
-        booking.check_in_date = parse_date(payload.get("check_in_date"), "check_in_date")
+        check_in_date = parse_date(payload.get("check_in_date"), "check_in_date")
+        validate_booking_start_date(check_in_date)
+        booking.check_in_date = check_in_date
         booking.check_out_date = parse_date(payload.get("check_out_date"), "check_out_date")
         booking.adults = payload.get("adults") or 1
         booking.children = payload.get("children") or 0
@@ -1270,8 +1810,59 @@ def update_booking_api(request, booking_id):
         return JsonResponse({"detail": "Reservation introuvable."}, status=404)
     except ValidationError as error:
         return JsonResponse({"errors": format_validation_error(error)}, status=400)
+    except IntegrityError as error:
+        if is_booking_overlap_integrity_error(error):
+            return booking_overlap_integrity_response()
+        raise
 
     return JsonResponse({"message": "Reservation mise a jour.", "booking": serialize_booking(booking)})
+
+
+@api_login_required
+@module_hotel_scope_required("operations")
+@module_license_required("reservations")
+@module_permission_required("operations", action="update")
+def relocate_booking_api(request, booking_id):
+    if request.method != "POST":
+        return JsonResponse({"detail": "Methode non autorisee."}, status=405)
+    permission_response = require_business_action(request, "operations.relocate")
+    if permission_response:
+        return permission_response
+
+    try:
+        payload = parse_json_body(request)
+        new_room_id = payload.get("new_room_id") or payload.get("room_id")
+        if not new_room_id:
+            raise ValidationError({"new_room_id": "Selectionne la nouvelle chambre."})
+        booking = hotel_scoped_get(Booking.objects.select_related("guest", "room", "room_type", "hotel"), request, pk=booking_id)
+        new_room = hotel_scoped_get(Room.objects.select_related("room_type", "hotel"), request, pk=new_room_id)
+        relocation = relocate_booking(
+            booking=booking,
+            new_room=new_room,
+            reason=payload.get("reason"),
+            actor=request.user,
+            rate_impact_mode=payload.get("rate_impact_mode") or None,
+            notes=payload.get("notes") or "",
+        )
+        booking.refresh_from_db()
+    except Booking.DoesNotExist:
+        return JsonResponse({"detail": "Reservation introuvable."}, status=404)
+    except Room.DoesNotExist:
+        return JsonResponse({"detail": "Chambre introuvable."}, status=404)
+    except ValidationError as error:
+        return JsonResponse({"errors": format_validation_error(error)}, status=400)
+    except IntegrityError as error:
+        if is_booking_overlap_integrity_error(error):
+            return booking_overlap_integrity_response()
+        raise
+
+    return JsonResponse(
+        {
+            "message": "Relogement de reservation effectue.",
+            "relocation": serialize_relocation(relocation),
+            "booking": serialize_booking(booking),
+        }
+    )
 
 
 @api_login_required
@@ -1291,10 +1882,8 @@ def update_stay_api(request, stay_id):
         stay.expected_check_out_date = stay.planned_check_out.date() if stay.planned_check_out else parse_date(
             payload.get("expected_check_out_date"), "expected_check_out_date"
         )
-        stay.adults = payload.get("adults") or 1
-        stay.adults_count = payload.get("adults_count") or stay.adults or 1
-        stay.children = payload.get("children") or 0
-        stay.children_count = payload.get("children_count") or stay.children or 0
+        stay.adults_count = int(payload.get("adults_count") or payload.get("adults") or 1)
+        stay.children_count = int(payload.get("children_count") or payload.get("children") or 0)
         stay.number_of_guests = payload.get("number_of_guests") or (stay.adults_count + stay.children_count)
         stay.purpose_of_stay = payload.get("purpose_of_stay") or ""
         stay.special_requests = payload.get("special_requests") or ""
@@ -1319,6 +1908,48 @@ def update_stay_api(request, stay_id):
 
 @api_login_required
 @module_hotel_scope_required("operations")
+@module_permission_required("operations", action="update")
+def relocate_stay_api(request, stay_id):
+    if request.method != "POST":
+        return JsonResponse({"detail": "Methode non autorisee."}, status=405)
+    permission_response = require_business_action(request, "operations.relocate")
+    if permission_response:
+        return permission_response
+
+    try:
+        payload = parse_json_body(request)
+        new_room_id = payload.get("new_room_id") or payload.get("room_id")
+        if not new_room_id:
+            raise ValidationError({"new_room_id": "Selectionne la nouvelle chambre."})
+        stay = hotel_scoped_get(Stay.objects.select_related("guest", "room", "booking", "hotel"), request, pk=stay_id)
+        new_room = hotel_scoped_get(Room.objects.select_related("room_type", "hotel"), request, pk=new_room_id)
+        relocation = relocate_stay(
+            stay=stay,
+            new_room=new_room,
+            reason=payload.get("reason"),
+            actor=request.user,
+            rate_impact_mode=payload.get("rate_impact_mode") or None,
+            notes=payload.get("notes") or "",
+        )
+        stay.refresh_from_db()
+    except Stay.DoesNotExist:
+        return JsonResponse({"detail": "Sejour introuvable."}, status=404)
+    except Room.DoesNotExist:
+        return JsonResponse({"detail": "Chambre introuvable."}, status=404)
+    except ValidationError as error:
+        return JsonResponse({"errors": format_validation_error(error)}, status=400)
+
+    return JsonResponse(
+        {
+            "message": "Relogement de sejour effectue.",
+            "relocation": serialize_relocation(relocation),
+            "stay": serialize_stay(stay),
+        }
+    )
+
+
+@api_login_required
+@module_hotel_scope_required("operations")
 @module_permission_required("operations", action="create")
 def create_stay_api(request):
     if request.method != "POST":
@@ -1326,7 +1957,7 @@ def create_stay_api(request):
 
     try:
         payload = parse_json_body(request)
-        guest = hotel_scoped_get(Guest.objects.all(), request, pk=payload.get("guest_id"))
+        guest = hotel_scoped_active_guest_get(request, pk=payload.get("guest_id"))
         room = hotel_scoped_get(Room.objects.select_related("room_type"), request, pk=payload.get("room_id"))
         planned_check_in = parse_datetime(payload.get("planned_check_in"), "planned_check_in") if payload.get("planned_check_in") else None
         actual_check_in = parse_datetime(payload.get("actual_check_in"), "actual_check_in") if payload.get("actual_check_in") else timezone.now()
@@ -1363,27 +1994,52 @@ def create_stay_api(request):
 
 @api_login_required
 @module_hotel_scope_required("operations")
+@module_license_required("day_use")
 @module_permission_required("operations", action="update")
 def update_day_use_api(request, day_use_id):
     if request.method != "POST":
         return JsonResponse({"detail": "Methode non autorisee."}, status=405)
 
     try:
-        day_use = hotel_scoped_get(DayUse.objects.all(), request, pk=day_use_id)
+        day_use = hotel_scoped_get(DayUse.objects.select_related("room__room_type"), request, pk=day_use_id)
+        if day_use.status not in {DayUse.Status.DRAFT, DayUse.Status.PENDING_PAYMENT, DayUse.Status.READY}:
+            raise ValidationError("Ce day use ne peut plus etre modifie.")
         payload = parse_json_body(request)
-        next_room_id = payload.get("room_id") or day_use.room_id
-        if str(next_room_id) != str(day_use.room_id):
-            if day_use.status != DayUse.Status.PENDING_PAYMENT:
-                raise ValidationError(
-                    {"room_id": "La chambre ne peut etre modifiee qu'avant l'entree effective du day use."}
-                )
-        day_use.room_id = next_room_id
-        day_use.package_price = payload.get("package_price") or 0
-        day_use.overtime_choice = payload.get("overtime_choice") or DayUse.OvertimeChoice.NONE
-        day_use.overtime_fee = payload.get("overtime_fee") or 0
-        day_use.planned_entry_at = parse_datetime(payload.get("planned_entry_at"), "planned_entry_at")
-        day_use.notes = payload.get("notes") or ""
-        day_use.save()
+        if payload.get("room_id"):
+            day_use.room = hotel_scoped_get(Room.objects.select_related("room_type"), request, pk=payload.get("room_id"))
+        if payload.get("planned_entry_at") or payload.get("start_datetime"):
+            day_use.start_datetime = normalize_datetime(payload.get("start_datetime") or payload.get("planned_entry_at"), "start_datetime")
+            day_use.planned_entry_at = day_use.start_datetime
+        if payload.get("expected_duration_hours") or payload.get("duration_hours"):
+            day_use.expected_duration_hours = DayUsePricingService.validate_duration(
+                payload.get("expected_duration_hours") or payload.get("duration_hours")
+            )
+        pricing = DayUsePricingService.calculate(
+            room=day_use.room,
+            duration_hours=day_use.expected_duration_hours,
+            discount_amount=payload.get("discount_amount", day_use.discount_amount),
+            hourly_rate=payload.get("hourly_rate", day_use.hourly_rate),
+        )
+        day_use.end_datetime = day_use.start_datetime + timedelta(hours=pricing["expected_duration_hours"])
+        DayUseAvailabilityService.validate_room_can_be_used(day_use.room)
+        DayUseConflictService.validate_no_conflict(
+            room=day_use.room,
+            start_datetime=day_use.start_datetime,
+            end_datetime=day_use.end_datetime,
+            exclude_day_use=day_use,
+        )
+        day_use.hourly_rate = pricing["hourly_rate"]
+        day_use.subtotal_amount = pricing["subtotal_amount"]
+        day_use.discount_amount = pricing["discount_amount"]
+        day_use.final_amount = pricing["final_amount"]
+        day_use.package_price = pricing["final_amount"]
+        day_use.total_amount = pricing["final_amount"]
+        day_use.notes = payload.get("notes", day_use.notes)
+        day_use.updated_by = request.user
+        try:
+            day_use.save()
+        except IntegrityError:
+            return JsonResponse({"errors": {"room": ["Conflit horaire avec une occupation existante."]}}, status=400)
         log_history(
             action_type=HistoryEntry.ActionType.STATUS_UPDATED,
             module="bookings",
@@ -1395,6 +2051,8 @@ def update_day_use_api(request, day_use_id):
         )
     except DayUse.DoesNotExist:
         return JsonResponse({"detail": "Day use introuvable."}, status=404)
+    except Room.DoesNotExist:
+        return JsonResponse({"detail": "Chambre introuvable."}, status=404)
     except ValidationError as error:
         return JsonResponse({"errors": format_validation_error(error)}, status=400)
 
@@ -1403,10 +2061,14 @@ def update_day_use_api(request, day_use_id):
 
 @api_login_required
 @module_hotel_scope_required("operations")
+@module_license_required("billing")
 @module_permission_required("operations", action="update")
 def update_payment_api(request, payment_id):
     if request.method != "POST":
         return JsonResponse({"detail": "Methode non autorisee."}, status=405)
+    permission_response = require_business_action(request, "payments.correct")
+    if permission_response:
+        return permission_response
 
     try:
         payment = hotel_scoped_get(Payment.objects.all(), request, pk=payment_id)
@@ -1440,6 +2102,7 @@ def update_payment_api(request, payment_id):
 
 @api_login_required
 @module_hotel_scope_required("operations")
+@module_license_required("reservations")
 @module_permission_required("operations", action="update")
 def confirm_booking_api(request, booking_id):
     if request.method != "POST":
@@ -1447,19 +2110,7 @@ def confirm_booking_api(request, booking_id):
 
     try:
         booking = hotel_scoped_get(Booking.objects.all(), request, pk=booking_id)
-        if booking.status != Booking.Status.PENDING:
-            raise ValidationError("Seule une reservation en attente peut etre confirmee.")
-        booking.status = Booking.Status.CONFIRMED
-        booking.save(update_fields=["status", "updated_at"])
-        log_history(
-            action_type=HistoryEntry.ActionType.STATUS_UPDATED,
-            module="bookings",
-            entity_type="Booking",
-            entity_reference=booking.reference,
-            description=f"Reservation {booking.reference} confirmee via le poste de travail.",
-            actor=request.user,
-            metadata={"booking_id": booking.id, "status": booking.status},
-        )
+        booking.confirm(actor=request.user)
     except Booking.DoesNotExist:
         return JsonResponse({"detail": "Reservation introuvable."}, status=404)
     except ValidationError as error:
@@ -1470,28 +2121,18 @@ def confirm_booking_api(request, booking_id):
 
 @api_login_required
 @module_hotel_scope_required("operations")
+@module_license_required("reservations")
 @module_permission_required("operations", action="update")
 def cancel_booking_api(request, booking_id):
     if request.method != "POST":
         return JsonResponse({"detail": "Methode non autorisee."}, status=405)
+    permission_response = require_business_action(request, "operations.cancel")
+    if permission_response:
+        return permission_response
 
     try:
         booking = hotel_scoped_get(Booking.objects.all(), request, pk=booking_id)
-        if get_booking_stay(booking):
-            raise ValidationError("Une reservation convertie en sejour ne peut plus etre annulee.")
-        if booking.status not in {Booking.Status.PENDING, Booking.Status.CONFIRMED}:
-            raise ValidationError("Cette reservation ne peut pas etre annulee dans son etat actuel.")
-        booking.status = Booking.Status.CANCELLED
-        booking.save(update_fields=["status", "updated_at"])
-        log_history(
-            action_type=HistoryEntry.ActionType.STATUS_UPDATED,
-            module="bookings",
-            entity_type="Booking",
-            entity_reference=booking.reference,
-            description=f"Reservation {booking.reference} annulee via le poste de travail.",
-            actor=request.user,
-            metadata={"booking_id": booking.id, "status": booking.status},
-        )
+        booking.cancel(actor=request.user)
     except Booking.DoesNotExist:
         return JsonResponse({"detail": "Reservation introuvable."}, status=404)
     except ValidationError as error:
@@ -1502,10 +2143,36 @@ def cancel_booking_api(request, booking_id):
 
 @api_login_required
 @module_hotel_scope_required("operations")
+@module_license_required("reservations")
+@module_permission_required("operations", action="update")
+def mark_booking_no_show_api(request, booking_id):
+    if request.method != "POST":
+        return JsonResponse({"detail": "Methode non autorisee."}, status=405)
+    permission_response = require_business_action(request, "operations.no_show")
+    if permission_response:
+        return permission_response
+
+    try:
+        booking = hotel_scoped_get(Booking.objects.all(), request, pk=booking_id)
+        booking.mark_no_show(actor=request.user)
+    except Booking.DoesNotExist:
+        return JsonResponse({"detail": "Reservation introuvable."}, status=404)
+    except ValidationError as error:
+        return JsonResponse({"errors": format_validation_error(error)}, status=400)
+
+    return JsonResponse({"message": f"Reservation {booking.reference} marquee no-show.", "booking": serialize_booking(booking)})
+
+
+@api_login_required
+@module_hotel_scope_required("operations")
+@module_license_required("billing")
 @module_permission_required("operations", action="update")
 def refund_payment_api(request, payment_id):
     if request.method != "POST":
         return JsonResponse({"detail": "Methode non autorisee."}, status=405)
+    permission_response = require_business_action(request, "payments.refund")
+    if permission_response:
+        return permission_response
 
     try:
         payment = hotel_scoped_get(Payment.objects.select_related("day_use"), request, pk=payment_id)
@@ -1535,10 +2202,14 @@ def refund_payment_api(request, payment_id):
 
 @api_login_required
 @module_hotel_scope_required("operations")
+@module_license_required("billing")
 @module_permission_required("operations", action="update")
 def cancel_payment_api(request, payment_id):
     if request.method != "POST":
         return JsonResponse({"detail": "Methode non autorisee."}, status=405)
+    permission_response = require_business_action(request, "payments.cancel")
+    if permission_response:
+        return permission_response
 
     try:
         payment = hotel_scoped_get(Payment.objects.select_related("day_use"), request, pk=payment_id)
@@ -1606,10 +2277,14 @@ def _collect_ids(payload, key):
 
 @api_login_required
 @module_hotel_scope_required("operations")
+@module_license_required("reservations")
 @module_permission_required("operations", action="update")
 def bulk_booking_check_in_api(request):
     if request.method != "POST":
         return JsonResponse({"detail": "Methode non autorisee."}, status=405)
+    permission_response = require_business_action(request, "operations.check_in")
+    if permission_response:
+        return permission_response
 
     processed = 0
     errors = []
@@ -1648,6 +2323,9 @@ def bulk_booking_check_in_api(request):
 def bulk_stay_check_out_api(request):
     if request.method != "POST":
         return JsonResponse({"detail": "Methode non autorisee."}, status=405)
+    permission_response = require_business_action(request, "operations.check_out")
+    if permission_response:
+        return permission_response
 
     processed = 0
     errors = []
@@ -1679,10 +2357,14 @@ def bulk_stay_check_out_api(request):
 
 @api_login_required
 @module_hotel_scope_required("operations")
+@module_license_required("day_use")
 @module_permission_required("operations", action="update")
 def bulk_day_use_check_in_api(request):
     if request.method != "POST":
         return JsonResponse({"detail": "Methode non autorisee."}, status=405)
+    permission_response = require_business_action(request, "dayuse.check_in")
+    if permission_response:
+        return permission_response
 
     processed = 0
     errors = []
@@ -1691,7 +2373,7 @@ def bulk_day_use_check_in_api(request):
         day_use_ids = _collect_ids(payload, "day_use_ids")
         for day_use in hotel_scoped(DayUse.objects.select_related("guest", "room").filter(id__in=day_use_ids), request):
             try:
-                day_use.perform_check_in()
+                DayUseLifecycleService.check_in(day_use, actor=request.user, request=request)
                 processed += 1
             except ValidationError as error:
                 errors.append({"reference": day_use.reference, "message": "; ".join(sum(format_validation_error(error).values(), []))})
@@ -1714,10 +2396,14 @@ def bulk_day_use_check_in_api(request):
 
 @api_login_required
 @module_hotel_scope_required("operations")
+@module_license_required("day_use")
 @module_permission_required("operations", action="update")
 def bulk_day_use_check_out_api(request):
     if request.method != "POST":
         return JsonResponse({"detail": "Methode non autorisee."}, status=405)
+    permission_response = require_business_action(request, "dayuse.check_out")
+    if permission_response:
+        return permission_response
 
     processed = 0
     errors = []
@@ -1726,7 +2412,7 @@ def bulk_day_use_check_out_api(request):
         day_use_ids = _collect_ids(payload, "day_use_ids")
         for day_use in hotel_scoped(DayUse.objects.select_related("guest", "room").filter(id__in=day_use_ids), request):
             try:
-                day_use.perform_check_out()
+                DayUseLifecycleService.check_out(day_use, actor=request.user, request=request)
                 processed += 1
             except ValidationError as error:
                 errors.append({"reference": day_use.reference, "message": "; ".join(sum(format_validation_error(error).values(), []))})
@@ -1753,6 +2439,9 @@ def bulk_day_use_check_out_api(request):
 def bulk_complete_cleaning_api(request):
     if request.method != "POST":
         return JsonResponse({"detail": "Methode non autorisee."}, status=405)
+    permission_response = require_business_action(request, "rooms.cleaning_complete")
+    if permission_response:
+        return permission_response
 
     processed = 0
     errors = []
@@ -1784,6 +2473,7 @@ def bulk_complete_cleaning_api(request):
 
 @api_login_required
 @module_hotel_scope_required("operations")
+@module_license_required("reservations")
 @module_permission_required("operations", action="create")
 def create_booking_api(request):
     if request.method != "POST":
@@ -1791,25 +2481,46 @@ def create_booking_api(request):
 
     try:
         payload = parse_json_body(request)
-        guest = hotel_scoped_get(Guest.objects.all(), request, pk=payload.get("guest_id"))
+        guest = hotel_scoped_active_guest_get(request, pk=payload.get("guest_id"))
         room_type = hotel_scoped_get(RoomType.objects.all(), request, pk=payload.get("room_type_id"))
         room = None
         if payload.get("room_id"):
             room = hotel_scoped_get(Room.objects.all(), request, pk=payload.get("room_id"))
-        booking = Booking(
-            guest=guest,
-            room_type=room_type,
-            room=room,
-            hotel=get_request_hotel(request),
-            source=payload.get("source") or Booking.BookingSource.WALK_IN,
-            check_in_date=parse_date(payload.get("check_in_date"), "check_in_date"),
-            check_out_date=parse_date(payload.get("check_out_date"), "check_out_date"),
-            adults=payload.get("adults") or 1,
-            children=payload.get("children") or 0,
-            estimated_amount=payload.get("estimated_amount") or 0,
-            notes=payload.get("notes") or "",
-        )
-        booking.save()
+        check_in_date = parse_date(payload.get("check_in_date"), "check_in_date")
+        validate_booking_start_date(check_in_date)
+        advance_amount = payload.get("advance_amount") or 0
+        try:
+            advance_amount_value = Decimal(str(advance_amount or 0))
+        except (InvalidOperation, TypeError, ValueError):
+            raise ValidationError({"advance_amount": "Montant d'avance invalide."})
+        advance_paid_at = parse_datetime(payload.get("advance_paid_at"), "advance_paid_at") if payload.get("advance_paid_at") else None
+        with transaction.atomic():
+            booking = Booking(
+                guest=guest,
+                room_type=room_type,
+                room=room,
+                hotel=get_request_hotel(request),
+                source=payload.get("source") or Booking.BookingSource.WALK_IN,
+                check_in_date=check_in_date,
+                check_out_date=parse_date(payload.get("check_out_date"), "check_out_date"),
+                adults=payload.get("adults") or 1,
+                children=payload.get("children") or 0,
+                estimated_amount=payload.get("estimated_amount") or 0,
+                notes=payload.get("notes") or "",
+            )
+            booking.save()
+            advance_invoice = None
+            advance_payment = None
+            if advance_amount_value > 0:
+                advance_invoice, advance_payment = create_booking_advance_invoice_payment(
+                    booking,
+                    amount=advance_amount_value,
+                    method=payload.get("advance_method") or Payment.Method.CASH,
+                    paid_at=advance_paid_at,
+                    user=request.user,
+                    notes=payload.get("advance_notes") or "",
+                    external_reference=payload.get("advance_reference") or "",
+                )
     except Guest.DoesNotExist:
         return JsonResponse({"detail": "Client introuvable."}, status=404)
     except RoomType.DoesNotExist:
@@ -1818,11 +2529,17 @@ def create_booking_api(request):
         return JsonResponse({"detail": "Chambre introuvable."}, status=404)
     except ValidationError as error:
         return JsonResponse({"errors": format_validation_error(error)}, status=400)
+    except IntegrityError as error:
+        if is_booking_overlap_integrity_error(error):
+            return booking_overlap_integrity_response()
+        raise
 
     return JsonResponse(
         {
             "message": "Reservation creee.",
             "booking": serialize_booking(booking),
+            "advance_invoice": serialize_invoice(advance_invoice) if advance_invoice else None,
+            "advance_payment": serialize_payment(advance_payment) if advance_payment else None,
         },
         status=201,
     )
@@ -1830,6 +2547,7 @@ def create_booking_api(request):
 
 @api_login_required
 @module_hotel_scope_required("operations")
+@module_license_required("day_use")
 @module_permission_required("operations", action="create")
 def create_day_use_api(request):
     if request.method != "POST":
@@ -1837,19 +2555,21 @@ def create_day_use_api(request):
 
     try:
         payload = parse_json_body(request)
-        guest = hotel_scoped_get(Guest.objects.all(), request, pk=payload.get("guest_id"))
-        room = hotel_scoped_get(Room.objects.all(), request, pk=payload.get("room_id"))
-        day_use = DayUse(
+        guest = hotel_scoped_active_guest_get(request, pk=payload.get("guest_id") or payload.get("client_id"))
+        room = hotel_scoped_get(Room.objects.select_related("room_type"), request, pk=payload.get("room_id"))
+        if payload.get("planned_entry_at") and not payload.get("start_datetime"):
+            payload["start_datetime"] = payload.get("planned_entry_at")
+        if payload.get("package_price") and not payload.get("hourly_rate"):
+            payload["hourly_rate"] = payload.get("package_price")
+            payload["expected_duration_hours"] = payload.get("expected_duration_hours") or payload.get("duration_hours") or 1
+        day_use = DayUseLifecycleService.create(
+            hotel=get_request_hotel(request),
             guest=guest,
             room=room,
-            hotel=get_request_hotel(request),
-            package_price=payload.get("package_price") or 0,
-            overtime_choice=payload.get("overtime_choice") or DayUse.OvertimeChoice.NONE,
-            overtime_fee=payload.get("overtime_fee") or 0,
-            planned_entry_at=parse_datetime(payload.get("planned_entry_at"), "planned_entry_at"),
-            notes=payload.get("notes") or "",
+            payload=payload,
+            actor=request.user,
+            request=request,
         )
-        day_use.save()
     except Guest.DoesNotExist:
         return JsonResponse({"detail": "Client introuvable."}, status=404)
     except Room.DoesNotExist:
@@ -1868,37 +2588,95 @@ def create_day_use_api(request):
 
 @api_login_required
 @module_hotel_scope_required("operations")
+@module_license_required("billing")
 @module_permission_required("operations", action="create")
 def create_payment_api(request):
     if request.method != "POST":
         return JsonResponse({"detail": "Methode non autorisee."}, status=405)
+    permission_response = require_business_action(request, "payments.record")
+    if permission_response:
+        return permission_response
 
     try:
         payload = parse_json_body(request)
-        client = hotel_scoped_get(Guest.objects.all(), request, pk=payload.get("client_id")) if payload.get("client_id") else None
+        hotel = get_request_hotel(request)
+        client = hotel_scoped_active_guest_get(request, pk=payload.get("client_id")) if payload.get("client_id") else None
         booking = hotel_scoped_get(Booking.objects.all(), request, pk=payload.get("booking_id")) if payload.get("booking_id") else None
         stay = hotel_scoped_get(Stay.objects.all(), request, pk=payload.get("stay_id")) if payload.get("stay_id") else None
         day_use = hotel_scoped_get(DayUse.objects.all(), request, pk=payload.get("day_use_id")) if payload.get("day_use_id") else None
         invoice = hotel_scoped_get(ClientInvoice.objects.all(), request, pk=payload.get("invoice_id")) if payload.get("invoice_id") else None
-        payment = Payment(
-            client=client,
-            booking=booking,
-            stay=stay,
-            day_use=day_use,
-            invoice=invoice,
-            hotel=get_request_hotel(request),
-            status=payload.get("status") or Payment.Status.PAID,
-            payment_type=payload.get("payment_type") or Payment.PaymentType.PARTIAL,
-            method=payload.get("method") or Payment.Method.CASH,
-            amount=payload.get("amount") or 0,
-            paid_at=parse_datetime(payload.get("paid_at"), "paid_at"),
-            notes=payload.get("notes") or "",
-            source=payload.get("source") or "",
-            external_reference=payload.get("external_reference") or "",
-            currency=payload.get("currency") or "XOF",
-            recorded_by=request.user,
-        )
-        payment.save()
+        if not client and invoice:
+            client = invoice.client
+        elif not client and stay:
+            client = stay.guest
+        elif not client and booking:
+            client = booking.guest
+        elif not client and day_use:
+            client = day_use.guest
+        amount = Decimal(str(payload.get("amount") or 0)).quantize(Decimal("0.01"))
+        paid_at = parse_datetime(payload.get("paid_at"), "paid_at")
+
+        with transaction.atomic():
+            if not invoice and not day_use:
+                invoice = find_active_payment_invoice(hotel=hotel, client=client, booking=booking, stay=stay)
+            if not invoice and stay:
+                invoice = create_operation_advance_invoice(
+                    hotel=hotel,
+                    client=client,
+                    booking=booking or stay.booking,
+                    stay=stay,
+                    amount=amount,
+                    user=request.user,
+                )
+            elif not invoice and booking:
+                invoice = create_operation_advance_invoice(
+                    hotel=hotel,
+                    client=client,
+                    booking=booking,
+                    amount=amount,
+                    user=request.user,
+                )
+
+            payment_type = payload.get("payment_type")
+            if invoice:
+                payment_type = Payment.PaymentType.FULL if amount >= invoice.balance_due else Payment.PaymentType.PARTIAL
+            elif day_use:
+                payment_type = Payment.PaymentType.DAY_USE_PREPAYMENT
+            else:
+                payment_type = payment_type or Payment.PaymentType.ADVANCE
+
+            if day_use:
+                payment = DayUsePaymentService.record_payment(
+                    day_use,
+                    payload={
+                        **payload,
+                        "amount": amount,
+                        "status": payload.get("status") or Payment.Status.PAID,
+                        "paid_at": paid_at,
+                    },
+                    actor=request.user,
+                    request=request,
+                )
+            else:
+                payment = Payment(
+                    client=client,
+                    booking=booking,
+                    stay=stay,
+                    day_use=day_use,
+                    invoice=invoice,
+                    hotel=hotel,
+                    status=payload.get("status") or Payment.Status.PAID,
+                    payment_type=payment_type,
+                    method=payload.get("method") or Payment.Method.CASH,
+                    amount=amount,
+                    paid_at=paid_at,
+                    notes=payload.get("notes") or "",
+                    source=payload.get("source") or "",
+                    external_reference=payload.get("external_reference") or "",
+                    currency=payload.get("currency") or (invoice.currency if invoice else "XOF"),
+                    recorded_by=request.user,
+                )
+                payment.save()
     except Guest.DoesNotExist:
         return JsonResponse({"detail": "Client introuvable."}, status=404)
     except Booking.DoesNotExist:
@@ -1923,10 +2701,14 @@ def create_payment_api(request):
 
 @api_login_required
 @module_hotel_scope_required("operations")
+@module_license_required("reservations")
 @module_permission_required("operations", action="update")
 def booking_check_in_api(request, booking_id):
     if request.method != "POST":
         return JsonResponse({"detail": "Methode non autorisee."}, status=405)
+    permission_response = require_business_action(request, "operations.check_in")
+    if permission_response:
+        return permission_response
 
     try:
         payload = parse_json_body(request)
@@ -1972,6 +2754,9 @@ def booking_check_in_api(request, booking_id):
 def stay_check_out_api(request, stay_id):
     if request.method != "POST":
         return JsonResponse({"detail": "Methode non autorisee."}, status=405)
+    permission_response = require_business_action(request, "operations.check_out")
+    if permission_response:
+        return permission_response
 
     try:
         stay = hotel_scoped_get(Stay.objects.select_related("guest", "room"), request, pk=stay_id)
@@ -1987,14 +2772,18 @@ def stay_check_out_api(request, stay_id):
 
 @api_login_required
 @module_hotel_scope_required("operations")
+@module_license_required("day_use")
 @module_permission_required("operations", action="update")
 def day_use_check_in_api(request, day_use_id):
     if request.method != "POST":
         return JsonResponse({"detail": "Methode non autorisee."}, status=405)
+    permission_response = require_business_action(request, "dayuse.check_in")
+    if permission_response:
+        return permission_response
 
     try:
         day_use = hotel_scoped_get(DayUse.objects.select_related("guest", "room"), request, pk=day_use_id)
-        day_use.perform_check_in()
+        day_use = DayUseLifecycleService.check_in(day_use, actor=request.user, request=request)
         day_use.refresh_from_db()
     except DayUse.DoesNotExist:
         return JsonResponse({"detail": "Day use introuvable."}, status=404)
@@ -2006,14 +2795,18 @@ def day_use_check_in_api(request, day_use_id):
 
 @api_login_required
 @module_hotel_scope_required("operations")
+@module_license_required("day_use")
 @module_permission_required("operations", action="update")
 def day_use_check_out_api(request, day_use_id):
     if request.method != "POST":
         return JsonResponse({"detail": "Methode non autorisee."}, status=405)
+    permission_response = require_business_action(request, "dayuse.check_out")
+    if permission_response:
+        return permission_response
 
     try:
         day_use = hotel_scoped_get(DayUse.objects.select_related("guest", "room"), request, pk=day_use_id)
-        day_use.perform_check_out()
+        day_use = DayUseLifecycleService.check_out(day_use, actor=request.user, request=request)
         day_use.refresh_from_db()
     except DayUse.DoesNotExist:
         return JsonResponse({"detail": "Day use introuvable."}, status=404)

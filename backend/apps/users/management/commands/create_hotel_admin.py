@@ -1,3 +1,5 @@
+from getpass import getpass
+
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.users.services import create_hotel_admin_user
@@ -23,9 +25,22 @@ class Command(BaseCommand):
             help="Utilise ou cree l'organisation et l'hotel par defaut. Reserve au bootstrap local/dev.",
         )
         parser.add_argument(
-            "--platform-superuser",
+            "--django-superuser",
+            dest="django_superuser",
             action="store_true",
-            help="Active aussi is_superuser pour un usage technique Django. A utiliser avec prudence.",
+            help=(
+                "Active aussi is_superuser pour un usage technique Django. "
+                "Ne cree pas un administrateur plateforme React."
+            ),
+        )
+        parser.add_argument(
+            "--platform-superuser",
+            dest="platform_superuser",
+            action="store_true",
+            help=(
+                "Alias historique de --django-superuser. "
+                "Deprecated: utilisez create_platform_admin pour la console plateforme."
+            ),
         )
 
     def handle(self, *args, **options):
@@ -44,7 +59,7 @@ class Command(BaseCommand):
                 last_name=options.get("last_name", "").strip(),
                 email=options.get("email", "").strip(),
                 phone=options.get("phone", "").strip(),
-                is_superuser=bool(options.get("platform_superuser")),
+                is_superuser=bool(options.get("django_superuser") or options.get("platform_superuser")),
             )
         except Exception as exc:
             raise CommandError(str(exc)) from exc
@@ -60,8 +75,8 @@ class Command(BaseCommand):
         )
 
     def _prompt_password(self):
-        password = self.getpass("Mot de passe: ")
-        password_confirm = self.getpass("Confirmation du mot de passe: ")
+        password = getpass("Mot de passe: ")
+        password_confirm = getpass("Confirmation du mot de passe: ")
         if not password:
             raise CommandError("Le mot de passe est obligatoire.")
         if password != password_confirm:

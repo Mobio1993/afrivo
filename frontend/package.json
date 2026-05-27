@@ -7,9 +7,10 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test src/auth/permissions.test.js src/auth/routePermissions.test.js"
+    "test": "node --test src/auth/permissions.test.js src/auth/routePermissions.test.js src/features/super-root/superRootSecurity.test.js"
   },
   "dependencies": {
+    "framer-motion": "^12.38.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.6.0"

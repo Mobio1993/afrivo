@@ -11,6 +11,7 @@ DEFAULT_HOTEL_CODE = "AFRIVO-DEFAULT"
 STRICT_MODULE_ENV_VARS = {
     "satisfaction": "TENANCY_STRICT_SATISFACTION",
     "billing": "TENANCY_STRICT_BILLING",
+    "payments": "TENANCY_STRICT_PAYMENTS",
     "consumptions": "TENANCY_STRICT_CONSUMPTIONS",
     "guests": "TENANCY_STRICT_GUESTS",
     "operations": "TENANCY_STRICT_OPERATIONS",
@@ -88,7 +89,7 @@ def build_tenancy_readiness_payload(strict_modules=None):
     ]
 
     strict_modules = strict_modules or {}
-    module_order = ["satisfaction", "billing", "consumptions", "guests", "rooms", "bookings", "operations", "history"]
+    module_order = ["satisfaction", "billing", "payments", "consumptions", "guests", "rooms", "bookings", "operations", "history"]
     module_readiness = []
     for module_key in module_order:
         env_var = STRICT_MODULE_ENV_VARS.get(module_key, "")

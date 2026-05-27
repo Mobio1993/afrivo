@@ -12,7 +12,9 @@ from apps.consumptions.models import ClientConsumption, ServiceDepartment
 from apps.core.references import generate_unique_reference
 from apps.guests.models import Guest
 from apps.history.models import HistoryEntry
-from apps.history.services import log_history
+from apps.audit_logs.services import HotelAuditService
+
+log_history = HotelAuditService.log_history
 from apps.rooms.models import Room
 from apps.stays.models import Stay
 
@@ -26,6 +28,15 @@ def normalize_decimal(value, default="0.00"):
     if isinstance(value, Decimal):
         return value
     return Decimal(str(value))
+
+
+def get_hotel_settings(hotel):
+    if not hotel:
+        return None
+    try:
+        return hotel.settings
+    except Exception:
+        return None
 
 
 class ClientInvoice(models.Model):
@@ -71,6 +82,14 @@ class ClientInvoice(models.Model):
         on_delete=models.PROTECT,
         related_name="invoices",
         verbose_name="Reservation",
+        blank=True,
+        null=True,
+    )
+    day_use = models.ForeignKey(
+        DayUse,
+        on_delete=models.PROTECT,
+        related_name="invoices",
+        verbose_name="Day use",
         blank=True,
         null=True,
     )
@@ -161,6 +180,7 @@ class ClientInvoice(models.Model):
             models.Index(fields=["client", "issued_at"], name="invoice_client_issued_idx"),
             models.Index(fields=["stay", "issued_at"], name="invoice_stay_issued_idx"),
             models.Index(fields=["reservation", "issued_at"], name="invoice_booking_issued_idx"),
+            models.Index(fields=["day_use", "issued_at"], name="invoice_dayuse_issued_idx"),
             models.Index(fields=["status"], name="invoice_status_idx"),
         ]
 
@@ -178,6 +198,8 @@ class ClientInvoice(models.Model):
             self.hotel = self.stay.hotel
         if self.reservation_id and self.reservation and self.reservation.hotel_id and not self.hotel_id:
             self.hotel = self.reservation.hotel
+        if self.day_use_id and self.day_use and self.day_use.hotel_id and not self.hotel_id:
+            self.hotel = self.day_use.hotel
         if self.client_id and self.client and self.client.hotel_id and not self.hotel_id:
             self.hotel = self.client.hotel
 
@@ -186,6 +208,9 @@ class ClientInvoice(models.Model):
 
         if self.reservation_id and self.reservation and self.reservation.guest_id != self.client_id:
             errors["reservation"] = "La reservation selectionnee doit appartenir au meme client."
+
+        if self.day_use_id and self.day_use and self.day_use.guest_id != self.client_id:
+            errors["day_use"] = "Le day use selectionne doit appartenir au meme client."
 
         if self.stay_id and self.stay and self.stay.booking_id and not self.reservation_id:
             self.reservation = self.stay.booking
@@ -202,6 +227,12 @@ class ClientInvoice(models.Model):
 
         if self.hotel_id and self.reservation_id and self.reservation and self.reservation.hotel_id and self.reservation.hotel_id != self.hotel_id:
             errors["reservation"] = "La reservation selectionnee doit appartenir au meme hotel que la facture."
+
+        if self.hotel_id and self.day_use_id and self.day_use and self.day_use.hotel_id and self.day_use.hotel_id != self.hotel_id:
+            errors["day_use"] = "Le day use selectionne doit appartenir au meme hotel que la facture."
+
+        if self.day_use_id and (self.stay_id or self.reservation_id):
+            errors["day_use"] = "Une facture day use ne doit pas etre rattachee simultanement a un sejour ou une reservation."
 
         if self.due_date and self.issued_at and self.due_date < self.issued_at.date():
             errors["due_date"] = "L'echeance ne peut pas etre anterieure a la date d'emission."
@@ -225,6 +256,12 @@ class ClientInvoice(models.Model):
         self.subtotal_amount = self.recompute_subtotal()
         self.discount_amount = normalize_decimal(self.discount_amount).quantize(AMOUNT_QUANTIZER)
         self.tax_amount = normalize_decimal(self.tax_amount).quantize(AMOUNT_QUANTIZER)
+        hotel_settings = get_hotel_settings(self.hotel)
+        if self.tax_amount == Decimal("0.00") and hotel_settings and hotel_settings.tax_rate > 0:
+            taxable_amount = max(self.subtotal_amount - self.discount_amount, Decimal("0.00"))
+            self.tax_amount = (taxable_amount * Decimal(str(hotel_settings.tax_rate)) / Decimal("100")).quantize(
+                AMOUNT_QUANTIZER
+            )
         gross_total = self.subtotal_amount - self.discount_amount + self.tax_amount
         self.total_amount = max(gross_total, Decimal("0.00")).quantize(AMOUNT_QUANTIZER)
         self.amount_paid = self.recompute_amount_paid()
@@ -274,8 +311,12 @@ class ClientInvoice(models.Model):
 
     def save(self, *args, **kwargs):
         is_new = self._state.adding
+        if is_new and self.hotel_id:
+            hotel_settings = get_hotel_settings(self.hotel)
+            if hotel_settings:
+                self.currency = hotel_settings.currency
         if not self.reference:
-            self.reference = self.generate_reference()
+            self.reference = self.generate_reference_for_hotel(self.hotel if self.hotel_id else None)
         self.recompute_totals()
         self.full_clean()
         super().save(*args, **kwargs)
@@ -317,6 +358,20 @@ class ClientInvoice(models.Model):
     @staticmethod
     def generate_reference():
         return generate_unique_reference(ClientInvoice, "INV")
+
+    @staticmethod
+    def generate_reference_for_hotel(hotel):
+        hotel_settings = get_hotel_settings(hotel)
+        if not hotel_settings:
+            return ClientInvoice.generate_reference()
+
+        prefix = hotel_settings.invoice_prefix or "INV"
+        next_number = hotel_settings.invoice_start_number or 1
+        while True:
+            candidate = f"{prefix}-{next_number:06d}"
+            if not ClientInvoice.objects.filter(reference=candidate).exists():
+                return candidate
+            next_number += 1
 
 
 class ClientInvoiceItem(models.Model):
@@ -465,11 +520,33 @@ class Payment(models.Model):
         REFUNDED = "refunded", "Rembourse"
 
     class PaymentType(models.TextChoices):
+        INVOICE_PAYMENT = "invoice_payment", "Paiement facture"
         ADVANCE = "advance", "Avance"
+        DEPOSIT = "deposit", "Depot / caution"
+        CREDIT_TOPUP = "credit_topup", "Recharge credit client"
+        DAY_USE_PREPAYMENT = "day_use_prepayment", "Prepaiement day use"
         PARTIAL = "partial", "Paiement partiel"
         FULL = "full", "Paiement complet"
         REFUND = "refund", "Remboursement"
         ADJUSTMENT = "adjustment", "Ajustement"
+
+    INVOICE_PAYMENT_TYPES = {
+        PaymentType.INVOICE_PAYMENT,
+        PaymentType.PARTIAL,
+        PaymentType.FULL,
+    }
+    CONTROLLED_STANDALONE_TYPES = {
+        PaymentType.ADVANCE,
+        PaymentType.DEPOSIT,
+        PaymentType.CREDIT_TOPUP,
+        PaymentType.DAY_USE_PREPAYMENT,
+        PaymentType.REFUND,
+    }
+    LEGACY_PAYMENT_TYPES = {
+        PaymentType.PARTIAL,
+        PaymentType.FULL,
+        PaymentType.ADJUSTMENT,
+    }
 
     class Method(models.TextChoices):
         CASH = "cash", "Especes"
@@ -618,12 +695,9 @@ class Payment(models.Model):
         if self.status == self.Status.REFUNDED:
             return self.PaymentType.REFUND
         if self.invoice_id and self.invoice:
-            balance_due = normalize_decimal(self.invoice.balance_due)
-            if balance_due <= Decimal("0.00"):
-                return self.PaymentType.ADJUSTMENT
-            if normalize_decimal(self.amount) >= balance_due:
-                return self.PaymentType.FULL
-            return self.PaymentType.PARTIAL
+            return self.PaymentType.INVOICE_PAYMENT
+        if self.day_use_id and not self.invoice_id:
+            return self.PaymentType.DAY_USE_PREPAYMENT
         if self.booking_id and not self.stay_id:
             return self.PaymentType.ADVANCE
         return self.PaymentType.PARTIAL
@@ -631,8 +705,29 @@ class Payment(models.Model):
     def clean(self):
         errors = {}
 
-        if not self.booking and not self.stay and not self.day_use and not self.invoice:
-            errors["booking"] = "Le paiement doit etre rattache a une reservation, un sejour, un day use ou une facture."
+        if not self.payment_type:
+            self.payment_type = self.infer_payment_type()
+
+        if not self.invoice and self.payment_type in self.LEGACY_PAYMENT_TYPES:
+            errors["payment_type"] = "Ce type de paiement doit etre rattache a une facture."
+
+        if self.payment_type == self.PaymentType.INVOICE_PAYMENT and not self.invoice:
+            errors["invoice"] = "Une facture est obligatoire pour un paiement de facture."
+
+        if not self.invoice and self.payment_type not in self.CONTROLLED_STANDALONE_TYPES and self.payment_type not in self.LEGACY_PAYMENT_TYPES:
+            errors["payment_type"] = "Paiement sans facture autorise uniquement pour une avance, caution, recharge credit, prepaiement day use ou remboursement."
+
+        if not self.invoice and self.payment_type in self.CONTROLLED_STANDALONE_TYPES:
+            has_trace = bool((self.notes or "").strip() or (self.external_reference or "").strip() or self.booking_id or self.stay_id or self.day_use_id)
+            if not has_trace:
+                errors["notes"] = "Un paiement sans facture doit avoir un motif, une reference externe ou un rattachement metier."
+
+        if not self.booking and not self.stay and not self.day_use and not self.invoice and self.payment_type not in {
+            self.PaymentType.ADVANCE,
+            self.PaymentType.DEPOSIT,
+            self.PaymentType.CREDIT_TOPUP,
+        }:
+            errors["booking"] = "Le paiement doit etre rattache a une reservation, un sejour, un day use, une facture ou un type autonome controle."
 
         if self.booking and self.stay:
             if self.stay.booking_id != self.booking_id:
@@ -714,9 +809,6 @@ class Payment(models.Model):
         if self.status == self.Status.REFUNDED and self.payment_type != self.PaymentType.REFUND:
             self.payment_type = self.PaymentType.REFUND
 
-        if not self.payment_type:
-            self.payment_type = self.infer_payment_type()
-
         if errors:
             raise ValidationError(errors)
 
@@ -726,6 +818,12 @@ class Payment(models.Model):
             self.reference = self.generate_reference()
         if not self.payment_type:
             self.payment_type = self.infer_payment_type()
+        if self.invoice_id:
+            self.currency = self.invoice.currency
+        elif is_new and self.hotel_id:
+            hotel_settings = get_hotel_settings(self.hotel)
+            if hotel_settings:
+                self.currency = hotel_settings.currency
         self.full_clean()
         super().save(*args, **kwargs)
         if is_new:

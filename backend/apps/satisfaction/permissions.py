@@ -2,7 +2,7 @@ from django.conf import settings
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 
 from apps.tenancy.drf import AuthenticatedHotelPermission
-from apps.tenancy.utils import attach_request_hotel
+from apps.tenants.services.tenant_service import TenantService
 from apps.users.jwt_auth import resolve_api_user
 from apps.users.models import User
 
@@ -28,7 +28,7 @@ class ReadOnlyAdmin(BasePermission):
             return False
 
         request.user = user
-        attach_request_hotel(request)
+        TenantService.attach_request_tenant(request)
         return user.role in {User.Role.ADMIN, User.Role.RECEPTION}
 
 

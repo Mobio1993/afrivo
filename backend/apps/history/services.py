@@ -1,9 +1,104 @@
-from apps.history.models import HistoryEntry
+from apps.history.models import ActivityLog, HistoryEntry
 
 
-def log_history(*, action_type, module, entity_type, entity_reference, description, actor=None, metadata=None, hotel=None):
+HISTORY_TO_ACTIVITY_ACTION = {
+    HistoryEntry.ActionType.BOOKING_CREATED: ActivityLog.Action.CREATE,
+    HistoryEntry.ActionType.CHECK_IN: ActivityLog.Action.CHECKIN,
+    HistoryEntry.ActionType.CHECK_OUT: ActivityLog.Action.CHECKOUT,
+    HistoryEntry.ActionType.DAY_USE_CREATED: ActivityLog.Action.CREATE,
+    HistoryEntry.ActionType.DAY_USE_CHECK_IN: ActivityLog.Action.CHECKIN,
+    HistoryEntry.ActionType.DAY_USE_CHECK_OUT: ActivityLog.Action.CHECKOUT,
+    HistoryEntry.ActionType.CLEANING_COMPLETED: ActivityLog.Action.ROOM_STATUS_CHANGE,
+    HistoryEntry.ActionType.PAYMENT_RECORDED: ActivityLog.Action.PAYMENT,
+    HistoryEntry.ActionType.SATISFACTION_RECORDED: ActivityLog.Action.CREATE,
+    HistoryEntry.ActionType.STATUS_UPDATED: ActivityLog.Action.UPDATE,
+    HistoryEntry.ActionType.OTHER: ActivityLog.Action.OTHER,
+}
+
+
+def _get_client_ip(request):
+    if request is None:
+        return None
+    forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR") or None
+
+
+def _get_user_agent(request):
+    if request is None:
+        return ""
+    return request.META.get("HTTP_USER_AGENT", "")[:1000]
+
+
+def _get_session_key(request):
+    if request is None:
+        return ""
+    session = getattr(request, "session", None)
+    return getattr(session, "session_key", "") or ""
+
+
+def _resolve_hotel(request=None, user=None, hotel=None):
+    if hotel is not None:
+        return hotel
+    request_hotel = getattr(request, "hotel", None) if request is not None else None
+    if request_hotel is not None:
+        return request_hotel
+    return getattr(user, "hotel", None)
+
+
+def _normalize_payload(value):
+    if not value:
+        return {}
+    if isinstance(value, dict):
+        return value
+    return {"value": value}
+
+
+def log_activity(
+    *,
+    request=None,
+    action=ActivityLog.Action.OTHER,
+    module,
+    object_type="",
+    object_id="",
+    object_reference="",
+    description,
+    old_values=None,
+    new_values=None,
+    severity=ActivityLog.Severity.INFO,
+    user=None,
+    hotel=None,
+    metadata=None,
+):
+    resolved_user = user or getattr(request, "user", None)
+    if not getattr(resolved_user, "is_authenticated", False):
+        resolved_user = None
+    resolved_hotel = _resolve_hotel(request=request, user=resolved_user, hotel=hotel)
+
+    return ActivityLog.objects.create(
+        hotel=resolved_hotel,
+        user=resolved_user,
+        user_role=getattr(resolved_user, "role", "") if resolved_user else "",
+        action=action,
+        module=module,
+        object_type=object_type or "",
+        object_id=str(object_id or ""),
+        object_reference=str(object_reference or ""),
+        description=description,
+        old_values=_normalize_payload(old_values),
+        new_values=_normalize_payload(new_values),
+        metadata=metadata or {},
+        ip_address=_get_client_ip(request),
+        user_agent=_get_user_agent(request),
+        severity=severity,
+        session_key=_get_session_key(request),
+    )
+
+
+def log_history(*, action_type, module, entity_type, entity_reference, description, actor=None, metadata=None, hotel=None, request=None):
     resolved_hotel = hotel or getattr(actor, "hotel", None)
-    return HistoryEntry.objects.create(
+    entry = HistoryEntry.objects.create(
         actor=actor,
         hotel=resolved_hotel,
         action_type=action_type,
@@ -13,6 +108,23 @@ def log_history(*, action_type, module, entity_type, entity_reference, descripti
         description=description,
         metadata=metadata or {},
     )
+    payload = metadata or {}
+    log_activity(
+        request=request,
+        user=actor,
+        hotel=resolved_hotel,
+        action=payload.get("activity_action") or HISTORY_TO_ACTIVITY_ACTION.get(action_type, ActivityLog.Action.OTHER),
+        module=module,
+        object_type=entity_type,
+        object_id=payload.get("object_id") or payload.get("booking_id") or payload.get("stay_id") or payload.get("payment_id") or payload.get("room_id") or payload.get("guest_id") or "",
+        object_reference=entity_reference,
+        description=description,
+        old_values=payload.get("old_values"),
+        new_values=payload.get("new_values") or payload,
+        severity=payload.get("severity") or ActivityLog.Severity.INFO,
+        metadata={**payload, "history_entry_id": entry.id},
+    )
+    return entry
 
 
 def _timeline_event(

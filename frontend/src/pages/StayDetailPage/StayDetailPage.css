@@ -1,0 +1,527 @@
+/* ════════════════════════════════════════════════
+   StayDetailPage — "Carte dossier"
+   Préfixe : .sdp-  (Stay Detail Page)
+   ════════════════════════════════════════════════ */
+
+/* ── 1. Héro ──────────────────────────────────── */
+
+.stay-detail-page .sdp-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  padding: 20px 24px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+}
+
+.stay-detail-page .sdp-hero-left {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Avatar initiales */
+.stay-detail-page .sdp-avatar {
+  flex-shrink: 0;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(15, 157, 138, 0.12);
+  color: #0c7c6d;
+  font-weight: 700;
+  font-size: 1.1rem;
+  letter-spacing: 0.02em;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid rgba(15, 157, 138, 0.22);
+  user-select: none;
+}
+
+.stay-detail-page .sdp-hero-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Références (mono) */
+.stay-detail-page .sdp-hero-refs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.stay-detail-page .sdp-ref-tag {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-soft);
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  padding: 2px 8px;
+  border-radius: 6px;
+  letter-spacing: 0.04em;
+}
+
+.stay-detail-page .sdp-ref-tag--secondary {
+  color: var(--text-muted);
+  background: transparent;
+}
+
+.stay-detail-page .sdp-ref-sep {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* Nom client */
+.stay-detail-page .sdp-guest-name {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--text-main);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Sous-titre chambre/source */
+.stay-detail-page .sdp-subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-soft);
+  line-height: 1.4;
+}
+
+/* Chips (téléphone, email, période) */
+.stay-detail-page .sdp-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.stay-detail-page .sdp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-soft);
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  padding: 4px 10px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+.stay-detail-page .sdp-chip i {
+  font-size: 12px;
+  color: var(--primary);
+}
+
+/* Badge de statut */
+.stay-detail-page .sdp-hero-right {
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.stay-detail-page .sdp-status-badge {
+  display: inline-block;
+  padding: 5px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.stay-detail-page .sdp-status-badge--active {
+  background: rgba(15, 157, 138, 0.1);
+  color: #0c7c6d;
+  border-color: rgba(15, 157, 138, 0.22);
+}
+
+.stay-detail-page .sdp-status-badge--done {
+  background: rgba(100, 116, 139, 0.1);
+  color: #475569;
+  border-color: rgba(100, 116, 139, 0.18);
+}
+
+.stay-detail-page .sdp-status-badge--cancelled {
+  background: #FEE2E2;
+  color: #B91C1C;
+  border-color: #FECACA;
+}
+
+.stay-detail-page .sdp-status-badge--default {
+  background: rgba(15, 157, 138, 0.1);
+  color: #0c7c6d;
+  border-color: rgba(15, 157, 138, 0.22);
+}
+
+/* ── 2. Barre d'actions ───────────────────────── */
+
+.stay-detail-page .sdp-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* ── 3. Bande KPIs ────────────────────────────── */
+
+.stay-detail-page .sdp-kpi-strip {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.stay-detail-page .sdp-kpi-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 16px 18px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+}
+
+.stay-detail-page .sdp-kpi-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+  line-height: 1.2;
+}
+
+.stay-detail-page .sdp-kpi-value {
+  font-size: clamp(1.1rem, 1.6vw, 1.4rem);
+  font-weight: 700;
+  color: var(--text-main);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.stay-detail-page .sdp-kpi-meta {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* ── 4. Grille de cartes ──────────────────────── */
+
+.stay-detail-page .sdp-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.stay-detail-page .sdp-card {
+  padding: 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.stay-detail-page .sdp-card--full {
+  grid-column: 1 / -1;
+}
+
+.stay-detail-page .sdp-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 2px;
+}
+
+.stay-detail-page .sdp-card-head i {
+  font-size: 16px;
+  color: var(--primary);
+}
+
+.stay-detail-page .sdp-card-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+/* ── Chronologie ──────────────────────────────── */
+
+.stay-detail-page .sdp-timeline {
+  display: flex;
+  flex-direction: column;
+}
+
+.stay-detail-page .sdp-timeline-step {
+  display: flex;
+  gap: 14px;
+}
+
+.stay-detail-page .sdp-timeline-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  width: 14px;
+}
+
+.stay-detail-page .sdp-timeline-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 2px solid currentColor;
+  margin-top: 3px;
+}
+
+.stay-detail-page .sdp-timeline-dot--good {
+  color: #16a34a;
+  background: #dcfce7;
+}
+
+.stay-detail-page .sdp-timeline-dot--warn {
+  color: #d97706;
+  background: #fef3c7;
+}
+
+.stay-detail-page .sdp-timeline-dot--neutral {
+  color: var(--text-muted);
+  background: var(--bg-soft);
+}
+
+.stay-detail-page .sdp-timeline-line {
+  flex: 1;
+  width: 2px;
+  background: var(--border-soft);
+  min-height: 20px;
+  margin-top: 2px;
+}
+
+.stay-detail-page .sdp-timeline-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-bottom: 22px;
+}
+
+.stay-detail-page .sdp-timeline-step:last-child .sdp-timeline-content {
+  padding-bottom: 0;
+}
+
+.stay-detail-page .sdp-timeline-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-soft);
+  line-height: 1.2;
+}
+
+.stay-detail-page .sdp-timeline-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.stay-detail-page .sdp-timeline-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(217, 119, 6, 0.1);
+  color: #d97706;
+  border: 1px solid rgba(217, 119, 6, 0.2);
+}
+
+/* ── Tableau infos séjour / chambre ───────────── */
+
+.stay-detail-page .sdp-info-table {
+  display: flex;
+  flex-direction: column;
+}
+
+.stay-detail-page .sdp-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  gap: 12px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.stay-detail-page .sdp-info-row:first-child {
+  padding-top: 0;
+}
+
+.stay-detail-page .sdp-info-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.stay-detail-page .sdp-info-label {
+  font-size: 13px;
+  color: var(--text-soft);
+  flex-shrink: 0;
+}
+
+.stay-detail-page .sdp-info-value {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-main);
+  text-align: right;
+}
+
+/* ── Encaissements ────────────────────────────── */
+
+.stay-detail-page .sdp-empty {
+  margin: 0;
+}
+
+.stay-detail-page .sdp-payments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.stay-detail-page .sdp-payment-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+
+/* Icône arrondie verte */
+.stay-detail-page .sdp-payment-icon {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  background: #dcfce7;
+  color: #16a34a;
+  border-radius: 10px;
+}
+
+.stay-detail-page .sdp-payment-icon i {
+  font-size: 16px;
+}
+
+.stay-detail-page .sdp-payment-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.stay-detail-page .sdp-payment-type {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+.stay-detail-page .sdp-payment-ref {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stay-detail-page .sdp-payment-amount {
+  font-size: 14px;
+  font-weight: 700;
+  color: #16a34a;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Footer totaux */
+.stay-detail-page .sdp-payments-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-soft);
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.stay-detail-page .sdp-payments-total {
+  margin-left: 6px;
+  font-weight: 700;
+  color: #16a34a;
+}
+
+.stay-detail-page .sdp-payments-balance {
+  margin-left: 6px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.stay-detail-page .sdp-payments-sep {
+  color: var(--text-muted);
+}
+
+/* ── Responsive ───────────────────────────────── */
+
+@media (max-width: 1180px) {
+  .stay-detail-page .sdp-kpi-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .stay-detail-page .sdp-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .stay-detail-page .sdp-hero {
+    flex-direction: column;
+  }
+
+  .stay-detail-page .sdp-hero-right {
+    padding-top: 0;
+  }
+}
+
+@media (max-width: 540px) {
+  .stay-detail-page .sdp-hero-left {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .stay-detail-page .sdp-kpi-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .stay-detail-page .sdp-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .stay-detail-page .sdp-actions .ops-btn {
+    justify-content: center;
+  }
+}

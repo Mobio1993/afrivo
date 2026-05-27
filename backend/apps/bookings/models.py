@@ -1,15 +1,20 @@
+from datetime import timedelta
+
 from django.core.exceptions import ValidationError
 from django.contrib.postgres.constraints import ExclusionConstraint
-from django.contrib.postgres.fields import DateRangeField, RangeOperators
+from django.contrib.postgres.fields import DateRangeField, DateTimeRangeField, RangeOperators
 from django.db import models, transaction
 from django.db.models import Func
 from django.db.models import Sum
 from django.utils import timezone
+from decimal import Decimal
 
 from apps.core.references import generate_unique_reference
 from apps.guests.models import Guest
 from apps.history.models import HistoryEntry
-from apps.history.services import log_history
+from apps.audit_logs.services import HotelAuditService
+
+log_history = HotelAuditService.log_history
 from apps.rooms.models import Room, RoomType
 
 
@@ -213,6 +218,12 @@ class Booking(models.Model):
     def confirm(self, *, actor=None):
         if self.status != self.Status.PENDING:
             raise ValidationError("Seule une reservation en attente peut etre confirmee.")
+        required_deposit = self.get_required_deposit_amount()
+        paid_deposit = self.get_paid_deposit_amount()
+        if required_deposit > 0 and paid_deposit < required_deposit:
+            raise ValidationError(
+                f"Une avance de {required_deposit} est obligatoire avant de confirmer cette reservation."
+            )
 
         self.status = self.Status.CONFIRMED
         self.save(update_fields=["status", "updated_at"])
@@ -266,6 +277,28 @@ class Booking(models.Model):
     def generate_reference():
         return generate_unique_reference(Booking, "RES")
 
+    def get_required_deposit_amount(self):
+        try:
+            settings = self.hotel.settings if self.hotel_id else None
+        except Exception:
+            settings = None
+        if not settings or not settings.deposit_required:
+            return Decimal("0.00")
+        percentage = Decimal(str(settings.deposit_percentage or 0))
+        if percentage <= 0 or self.estimated_amount <= 0:
+            return Decimal("0.00")
+        return (self.estimated_amount * percentage / Decimal("100")).quantize(Decimal("0.01"))
+
+    def get_paid_deposit_amount(self):
+        from apps.billing.models import Payment
+
+        return (
+            self.payments.filter(status=Payment.Status.PAID)
+            .exclude(payment_type=Payment.PaymentType.REFUND)
+            .aggregate(total=Sum("amount"))["total"]
+            or Decimal("0.00")
+        )
+
 
 ACTIVE_ROOM_OVERLAP_STATUSES = [
     Booking.Status.PENDING,
@@ -309,10 +342,20 @@ def validate_room_not_overlapping(
 
 class DayUse(models.Model):
     class Status(models.TextChoices):
+        DRAFT = "draft", "Brouillon"
         PENDING_PAYMENT = "pending_payment", "Paiement en attente"
         READY = "ready", "Pret a entrer"
         IN_PROGRESS = "in_progress", "En cours"
+        OVERTIME = "overtime", "Temps depasse"
         COMPLETED = "completed", "Termine"
+        CANCELLED = "cancelled", "Annule"
+        NO_SHOW = "no_show", "No-show"
+
+    class PaymentStatus(models.TextChoices):
+        UNPAID = "unpaid", "Non paye"
+        PARTIAL = "partial", "Paiement partiel"
+        PAID = "paid", "Paye"
+        REFUNDED = "refunded", "Rembourse"
         CANCELLED = "cancelled", "Annule"
 
     class OvertimeChoice(models.IntegerChoices):
@@ -370,10 +413,63 @@ class DayUse(models.Model):
         default=0,
         verbose_name="Montant total",
     )
+    payment_status = models.CharField(
+        max_length=20,
+        choices=PaymentStatus.choices,
+        default=PaymentStatus.UNPAID,
+        verbose_name="Statut paiement",
+    )
+    start_datetime = models.DateTimeField(blank=True, null=True, verbose_name="Debut day use")
+    end_datetime = models.DateTimeField(blank=True, null=True, verbose_name="Fin prevue day use")
+    expected_duration_hours = models.PositiveSmallIntegerField(default=3, verbose_name="Duree prevue (h)")
+    actual_duration_hours = models.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        default=0,
+        verbose_name="Duree reelle (h)",
+    )
+    hourly_rate = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Tarif horaire")
+    subtotal_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Sous-total")
+    discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Remise")
+    overtime_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Depassement")
+    extension_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Prolongations")
+    final_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Montant final")
+    amount_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Montant paye")
+    remaining_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Reste a payer")
     planned_entry_at = models.DateTimeField(default=timezone.now, verbose_name="Entree prevue")
     check_in_at = models.DateTimeField(blank=True, null=True, verbose_name="Entree effectuee le")
     check_out_at = models.DateTimeField(blank=True, null=True, verbose_name="Sortie effectuee le")
+    checked_in_at = models.DateTimeField(blank=True, null=True, verbose_name="Check-in effectue le")
+    checked_out_at = models.DateTimeField(blank=True, null=True, verbose_name="Check-out effectue le")
+    extension_count = models.PositiveSmallIntegerField(default=0, verbose_name="Nombre de prolongations")
+    converted_to_night = models.BooleanField(default=False, verbose_name="Converti en nuit")
+    converted_reservation = models.ForeignKey(
+        "bookings.Booking",
+        on_delete=models.SET_NULL,
+        related_name="converted_day_uses",
+        blank=True,
+        null=True,
+        verbose_name="Reservation creee",
+    )
+    cancellation_reason = models.TextField(blank=True, verbose_name="Raison d'annulation")
+    no_show_reason = models.TextField(blank=True, verbose_name="Raison no-show")
     notes = models.TextField(blank=True, verbose_name="Notes")
+    created_by = models.ForeignKey(
+        "users.User",
+        on_delete=models.SET_NULL,
+        related_name="created_day_uses",
+        blank=True,
+        null=True,
+        verbose_name="Cree par",
+    )
+    updated_by = models.ForeignKey(
+        "users.User",
+        on_delete=models.SET_NULL,
+        related_name="updated_day_uses",
+        blank=True,
+        null=True,
+        verbose_name="Modifie par",
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Cree le")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Mis a jour le")
 
@@ -390,10 +486,42 @@ class DayUse(models.Model):
                 condition=models.Q(overtime_fee__gte=0),
                 name="day_use_overtime_fee_non_negative",
             ),
+            ExclusionConstraint(
+                name="dayuse_no_active_room_overlap",
+                expressions=[
+                    (
+                        Func(
+                            "start_datetime",
+                            "end_datetime",
+                            function="TSTZRANGE",
+                            output_field=DateTimeRangeField(),
+                        ),
+                        RangeOperators.OVERLAPS,
+                    ),
+                    ("room", RangeOperators.EQUAL),
+                ],
+                condition=models.Q(
+                    room__isnull=False,
+                    start_datetime__isnull=False,
+                    end_datetime__isnull=False,
+                    status__in=[
+                        "pending_payment",
+                        "ready",
+                        "in_progress",
+                        "overtime",
+                    ],
+                ),
+            ),
         ]
         indexes = [
             models.Index(fields=["hotel", "planned_entry_at"], name="dayuse_hotel_entry_idx"),
             models.Index(fields=["hotel", "status"], name="dayuse_hotel_status_idx"),
+            models.Index(fields=["room", "start_datetime"], name="dayuse_room_start_idx"),
+            models.Index(fields=["guest", "created_at"], name="dayuse_guest_created_idx"),
+            models.Index(fields=["payment_status"], name="dayuse_payment_status_idx"),
+            models.Index(fields=["end_datetime"], name="dayuse_end_idx"),
+            models.Index(fields=["check_in_at"], name="dayuse_checkin_idx"),
+            models.Index(fields=["check_out_at"], name="dayuse_checkout_idx"),
         ]
 
     def __str__(self):
@@ -435,14 +563,66 @@ class DayUse(models.Model):
         if self.check_in_at and self.check_out_at and self.check_out_at < self.check_in_at:
             errors["check_out_at"] = "La sortie ne peut pas etre anterieure a l'entree."
 
+        if self.expected_duration_hours and not 1 <= int(self.expected_duration_hours) <= 10:
+            errors["expected_duration_hours"] = "La duree day use doit etre comprise entre 1h et 10h."
+
+        if self.start_datetime and self.end_datetime and self.end_datetime <= self.start_datetime:
+            errors["end_datetime"] = "La fin prevue doit etre posterieure au debut."
+
         if errors:
             raise ValidationError(errors)
+
+    def refresh_financials(self, *, save=False):
+        from apps.billing.models import Payment
+
+        paid = (
+            self.payments.filter(status=Payment.Status.PAID)
+            .exclude(payment_type=Payment.PaymentType.REFUND)
+            .aggregate(total=Sum("amount"))["total"]
+            or Decimal("0.00")
+        )
+        final_amount = self.final_amount or self.total_amount or self.package_price
+        self.amount_paid = paid
+        self.remaining_amount = max(final_amount - paid, Decimal("0.00"))
+        if paid <= 0:
+            self.payment_status = self.PaymentStatus.UNPAID
+        elif self.remaining_amount > 0:
+            self.payment_status = self.PaymentStatus.PARTIAL
+        else:
+            self.payment_status = self.PaymentStatus.PAID
+        if self.status in {self.Status.PENDING_PAYMENT, self.Status.READY}:
+            self.status = self.Status.READY if self.payment_status == self.PaymentStatus.PAID else self.Status.PENDING_PAYMENT
+        if save:
+            self.save(
+                update_fields=[
+                    "amount_paid",
+                    "remaining_amount",
+                    "payment_status",
+                    "status",
+                    "updated_at",
+                ]
+            )
 
     def save(self, *args, **kwargs):
         is_new = self._state.adding
         if not self.reference:
             self.reference = self.generate_reference()
-        self.total_amount = self.package_price + self.overtime_fee
+        if not self.start_datetime:
+            self.start_datetime = self.planned_entry_at
+        if self.start_datetime and not self.end_datetime:
+            self.end_datetime = self.start_datetime + timedelta(hours=self.expected_duration_hours or 3)
+        if not self.hourly_rate and self.room_id:
+            self.hourly_rate = self.room.effective_price_day_use
+        if not self.subtotal_amount:
+            self.subtotal_amount = (self.hourly_rate or Decimal("0")) * Decimal(self.expected_duration_hours or 0)
+        computed_final = self.subtotal_amount - self.discount_amount + self.overtime_amount + self.extension_amount
+        if computed_final > 0:
+            self.final_amount = computed_final
+            self.package_price = self.package_price or self.final_amount
+        elif self.package_price:
+            self.final_amount = self.package_price + self.overtime_fee
+        self.total_amount = self.final_amount or (self.package_price + self.overtime_fee)
+        self.remaining_amount = max((self.total_amount or Decimal("0")) - (self.amount_paid or Decimal("0")), Decimal("0"))
         self.full_clean()
         super().save(*args, **kwargs)
         if self.room_id:
@@ -505,8 +685,8 @@ class DayUse(models.Model):
         with transaction.atomic():
             room = Room.objects.select_for_update().get(pk=self.room_id)
 
-            if self.status != self.Status.IN_PROGRESS:
-                raise ValidationError("Seul un day use en cours peut etre cloture.")
+            if self.status not in {self.Status.IN_PROGRESS, self.Status.OVERTIME}:
+                raise ValidationError("Seul un day use en cours ou en depassement peut etre cloture.")
 
             self.status = self.Status.COMPLETED
             self.check_out_at = timezone.now()

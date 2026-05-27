@@ -33,6 +33,10 @@ def coerce_bool(value, default):
     return bool(value)
 
 
+def valid_choice_values(choices):
+    return {value for value, _label in choices}
+
+
 @lru_cache(maxsize=1)
 def consumptions_table_is_available():
     return "consumptions_clientconsumption" in connection.introspection.table_names()
@@ -62,7 +66,7 @@ class ClientSerializer:
             "hotel_id": instance.hotel_id,
             "client_code": instance.client_code or "",
             "first_name": instance.first_name,
-            "middle_name": instance.middle_name or "",
+            "middle_name": "",
             "last_name": instance.last_name,
             "full_name": instance.full_name,
             "gender": instance.gender or "",
@@ -80,7 +84,6 @@ class ClientSerializer:
             "email": instance.email or "-",
             "address": instance.address or "-",
             "city": instance.city or "-",
-            "country": instance.country or "-",
             "nationality": instance.display_nationality or "-",
             "identity_document_type": instance.identity_document_type,
             "identity_document_type_label": instance.get_identity_document_type_display()
@@ -118,7 +121,6 @@ class ClientSerializer:
         hotel = payload.get("hotel") or getattr(instance, "hotel", None)
 
         first_name = normalize_text(payload.get("first_name"))
-        middle_name = normalize_text(payload.get("middle_name"))
         last_name = normalize_text(payload.get("last_name"))
         gender = normalize_text(payload.get("gender"))
         client_type = normalize_text(payload.get("client_type")) or Guest.ClientType.INDIVIDUAL
@@ -131,8 +133,7 @@ class ClientSerializer:
         email = normalize_email_value(payload.get("email"))
         address = normalize_text(payload.get("address"))
         city = normalize_text(payload.get("city"))
-        country = normalize_text(payload.get("country")) or normalize_text(payload.get("nationality"))
-        nationality = normalize_text(payload.get("nationality")) or country
+        nationality = normalize_text(payload.get("nationality"))
         identity_document_type = normalize_text(payload.get("identity_document_type") or payload.get("document_type"))
         identity_document_number = normalize_upper_text(
             payload.get("identity_document_number") or payload.get("document_number")
@@ -144,13 +145,21 @@ class ClientSerializer:
         emergency_contact_phone = normalize_phone(payload.get("emergency_contact_phone"))
         emergency_contact_relationship = normalize_text(payload.get("emergency_contact_relationship"))
         notes = normalize_text(payload.get("notes"))
-        is_active = coerce_bool(payload.get("is_active"), True)
-        is_blacklisted = coerce_bool(payload.get("is_blacklisted"), False)
+        is_active = coerce_bool(payload.get("is_active"), getattr(instance, "is_active", True))
+        is_blacklisted = coerce_bool(payload.get("is_blacklisted"), getattr(instance, "is_blacklisted", False))
 
         if not first_name:
             errors["first_name"] = ["Le prenom est obligatoire."]
         if not last_name:
             errors["last_name"] = ["Le nom est obligatoire."]
+        if gender and gender not in valid_choice_values(Guest.Gender.choices):
+            errors["gender"] = ["Genre invalide."]
+        if client_type and client_type not in valid_choice_values(Guest.ClientType.choices):
+            errors["client_type"] = ["Type de client invalide."]
+        if marital_status and marital_status not in valid_choice_values(Guest.MaritalStatus.choices):
+            errors["marital_status"] = ["Situation matrimoniale invalide."]
+        if identity_document_type and identity_document_type not in valid_choice_values(Guest.IdentityDocumentType.choices):
+            errors["identity_document_type"] = ["Type de piece invalide."]
 
         if not any([phone, secondary_phone, email, identity_document_number]):
             errors["phone"] = [
@@ -177,11 +186,16 @@ class ClientSerializer:
         if instance is not None:
             duplicate_queryset = duplicate_queryset.exclude(pk=instance.pk)
 
-        if phone and duplicate_queryset.filter(phone=phone).exists():
+        if phone and duplicate_queryset.filter(Q(phone=phone) | Q(secondary_phone=phone)).exists():
             errors["phone"] = ["Un client existe deja avec ce telephone."]
 
-        if secondary_phone and duplicate_queryset.filter(phone=secondary_phone).exists():
-            errors["secondary_phone"] = ["Ce telephone secondaire est deja utilise comme numero principal."]
+        if secondary_phone and duplicate_queryset.filter(
+            Q(phone=secondary_phone) | Q(secondary_phone=secondary_phone)
+        ).exists():
+            errors["secondary_phone"] = ["Ce telephone secondaire est deja utilise sur une autre fiche client."]
+
+        if email and duplicate_queryset.filter(email__iexact=email).exists():
+            errors["email"] = ["Un client existe deja avec cet email."]
 
         if identity_document_type and identity_document_number:
             if duplicate_queryset.filter(
@@ -195,6 +209,7 @@ class ClientSerializer:
 
         duplicate_warnings = build_duplicate_warnings(
             instance=instance,
+            hotel=hotel,
             first_name=first_name,
             last_name=last_name,
             phone=phone,
@@ -207,7 +222,6 @@ class ClientSerializer:
         return {
             "data": {
                 "first_name": first_name,
-                "middle_name": middle_name,
                 "last_name": last_name,
                 "gender": gender,
                 "client_type": client_type,
@@ -220,7 +234,6 @@ class ClientSerializer:
                 "email": email,
                 "address": address,
                 "city": city,
-                "country": country,
                 "nationality": nationality,
                 "identity_document_type": identity_document_type,
                 "identity_document_number": identity_document_number,
@@ -430,7 +443,99 @@ class ClientDetailSerializer:
         }
 
     @classmethod
-    def serialize(cls, instance):
+    def serialize_profile(cls, instance, *, include_sensitive=True, include_financial=True, include_satisfaction=True):
+        payload = ClientSerializer.serialize(instance)
+        if not include_sensitive:
+            payload.update(
+                {
+                    "email": "-",
+                    "identity_document_number": "-",
+                    "document_number": "-",
+                    "notes": "",
+                }
+            )
+
+        payment_queryset = Payment.objects.filter(client=instance)
+        invoice_queryset = ClientInvoice.objects.none()
+        consumption_queryset = ClientConsumption.objects.none()
+        satisfaction_queryset = ClientSatisfaction.objects.none()
+
+        if include_financial and invoices_table_is_available():
+            invoice_queryset = instance.invoices.all()
+        if include_financial and consumptions_table_is_available():
+            consumption_queryset = instance.consumptions.all()
+        if include_satisfaction and satisfactions_table_is_available():
+            satisfaction_queryset = instance.satisfactions.all()
+
+        payload.update(
+            {
+                "summary": [
+                    {"label": "Reservations", "value": instance.bookings.count()},
+                    {"label": "Sejours", "value": instance.stays.count()},
+                    {"label": "Day use", "value": instance.day_uses.count()},
+                    {
+                        "label": "Paiements",
+                        "value": payment_queryset.exclude(status=Payment.Status.CANCELLED).count()
+                        if include_financial
+                        else 0,
+                    },
+                    {
+                        "label": "Consommations",
+                        "value": consumption_queryset.exclude(status=ClientConsumption.Status.CANCELLED).count()
+                        if include_financial and consumptions_table_is_available()
+                        else 0,
+                    },
+                    {
+                        "label": "Factures",
+                        "value": invoice_queryset.exclude(status=ClientInvoice.Status.CANCELLED).count()
+                        if include_financial and invoices_table_is_available()
+                        else 0,
+                    },
+                    {
+                        "label": "Avis satisfaction",
+                        "value": satisfaction_queryset.count()
+                        if include_satisfaction and satisfactions_table_is_available()
+                        else 0,
+                    },
+                ],
+                "permissions": {
+                    "sensitive": include_sensitive,
+                    "financial": include_financial,
+                    "satisfaction": include_satisfaction,
+                },
+            }
+        )
+        return payload
+
+    @classmethod
+    def serialize(cls, instance, *, include_related=True, include_sensitive=True, include_financial=True, include_satisfaction=True):
+        if not include_related:
+            payload = cls.serialize_profile(
+                instance,
+                include_sensitive=include_sensitive,
+                include_financial=include_financial,
+                include_satisfaction=include_satisfaction,
+            )
+            payload.update(
+                {
+                    "stay_portfolio": {},
+                    "consumption_portfolio": {},
+                    "payment_portfolio": {},
+                    "invoice_portfolio": {},
+                    "satisfaction_portfolio": {},
+                    "timeline_portfolio": {},
+                    "booking_history": [],
+                    "stay_history": [],
+                    "day_use_history": [],
+                    "timeline_history": [],
+                    "payment_history": [],
+                    "consumption_history": [],
+                    "invoice_history": [],
+                    "satisfaction_history": [],
+                }
+            )
+            return payload
+
         bookings = instance.bookings.select_related("room", "room_type").order_by("-created_at")[:10]
         stays = instance.stays.select_related("room").order_by("-check_in_at")[:10]
         day_uses = instance.day_uses.select_related("room").order_by("-created_at")[:10]
@@ -460,30 +565,19 @@ class ClientDetailSerializer:
                 .order_by("-submitted_at", "-id")
             )
 
-        payload = ClientSerializer.serialize(instance)
+        payload = cls.serialize_profile(
+            instance,
+            include_sensitive=include_sensitive,
+            include_financial=include_financial,
+            include_satisfaction=include_satisfaction,
+        )
         payload.update(
             {
-                "summary": [
-                    {"label": "Reservations", "value": instance.bookings.count()},
-                    {"label": "Sejours", "value": instance.stays.count()},
-                    {"label": "Day use", "value": instance.day_uses.count()},
-                    {"label": "Paiements", "value": payment_queryset.exclude(status=Payment.Status.CANCELLED).count()},
-                    {"label": "Consommations", "value": get_consumption_count(instance)},
-                    {
-                        "label": "Factures",
-                        "value": invoice_queryset.exclude(status=ClientInvoice.Status.CANCELLED).count()
-                        if invoices_table_is_available()
-                        else 0,
-                    },
-                    {
-                        "label": "Avis satisfaction",
-                        "value": satisfaction_queryset.count() if satisfactions_table_is_available() else 0,
-                    },
-                ],
                 "stay_portfolio": {
                     "active_count": instance.stays.filter(status=Stay.Status.IN_PROGRESS).count(),
                     "completed_count": instance.stays.filter(status=Stay.Status.COMPLETED).count(),
                     "cancelled_count": instance.stays.filter(status=Stay.Status.CANCELLED).count(),
+                    "total_count": instance.stays.count(),
                     "payments_total": f"{(Payment.objects.filter(stay__guest=instance, status=Payment.Status.PAID).aggregate(total=Sum('amount'))['total'] or 0):.2f}",
                     "consumptions_total": f"{(ClientConsumption.objects.filter(client=instance).exclude(status=ClientConsumption.Status.CANCELLED).aggregate(total=Sum('total_amount'))['total'] or 0):.2f}"
                     if consumptions_table_is_available()
@@ -668,7 +762,6 @@ def search_clients(queryset, search):
     return queryset.filter(
         Q(client_code__icontains=term)
         | Q(first_name__icontains=term)
-        | Q(middle_name__icontains=term)
         | Q(last_name__icontains=term)
         | Q(phone__icontains=term)
         | Q(secondary_phone__icontains=term)

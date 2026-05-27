@@ -1,5 +1,6 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import { getClientSatisfaction } from "../../../services/clientsService";
 import { formatDateTime, normalizeValue } from "../utils";
 import { EmptyStateCard } from "./EmptyStateCard";
 
@@ -32,8 +33,30 @@ function buildSatisfactionTone(portfolio) {
 }
 
 export function ClientSatisfactionTab({ selectedClient }) {
-  const portfolio = selectedClient?.satisfaction_portfolio || {};
-  const satisfactions = selectedClient?.satisfaction_history || [];
+  const [payload, setPayload] = useState({
+    satisfaction_portfolio: selectedClient?.satisfaction_portfolio || {},
+    results: selectedClient?.satisfaction_history || [],
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!selectedClient?.id) return undefined;
+    setPayload({
+      satisfaction_portfolio: selectedClient.satisfaction_portfolio || {},
+      results: selectedClient.satisfaction_history || [],
+    });
+    setLoading(true);
+    setError("");
+    getClientSatisfaction(selectedClient.id)
+      .then((data) => setPayload(data))
+      .catch((requestError) => setError(requestError.message || "Impossible de charger la satisfaction."))
+      .finally(() => setLoading(false));
+    return undefined;
+  }, [selectedClient?.id]);
+
+  const portfolio = payload.satisfaction_portfolio || {};
+  const satisfactions = payload.results || [];
   const latestFeedback = portfolio.latest_feedback || satisfactions[0] || null;
   const tone = buildSatisfactionTone(portfolio);
 
@@ -88,6 +111,9 @@ export function ClientSatisfactionTab({ selectedClient }) {
           <PortfolioCard key={item.label} label={item.label} value={item.value} meta={item.meta} />
         ))}
       </div>
+
+      {loading ? <div className="status-box">Chargement de la satisfaction...</div> : null}
+      {error ? <div className="alert-box">{error}</div> : null}
 
       <section className="table-card detail-info-card clients-satisfaction-overview">
         <div className="clients-history-filters__intro">

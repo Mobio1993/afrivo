@@ -7,8 +7,10 @@ import time
 
 from django.conf import settings
 
-from apps.users.access import build_user_permission_map
-from apps.users.models import BlacklistedToken, User
+from apps.iam.services.permission_service import PermissionService
+from django.utils import timezone
+
+from apps.users.models import BlacklistedToken, User, UserSession
 
 
 def _b64url_encode(data):
@@ -37,12 +39,22 @@ def _password_fingerprint(user):
     return digest[:16]
 
 
-def generate_jwt(user, token_type, remember_me=False):
+def _access_lifetime_for_user(user):
+    try:
+        timeout_minutes = user.hotel.settings.session_timeout_minutes if user.hotel_id else None
+    except Exception:
+        timeout_minutes = None
+    if timeout_minutes:
+        return int(timeout_minutes) * 60
+    return settings.JWT_ACCESS_LIFETIME_SECONDS
+
+
+def generate_jwt(user, token_type, remember_me=False, lifetime=None, mfa_context=""):
     now = int(time.time())
     if token_type == "access":
-        lifetime = settings.JWT_ACCESS_LIFETIME_SECONDS
+        lifetime = lifetime or _access_lifetime_for_user(user)
     elif token_type == "refresh":
-        lifetime = settings.JWT_REFRESH_LIFETIME_SECONDS
+        lifetime = lifetime or settings.JWT_REFRESH_LIFETIME_SECONDS
     else:
         raise ValueError("Unsupported token type.")
 
@@ -57,12 +69,27 @@ def generate_jwt(user, token_type, remember_me=False):
         "pwd": _password_fingerprint(user),
         "rmb": bool(remember_me),
     }
+    if mfa_context:
+        payload["mfa"] = mfa_context
+        payload["mfa_at"] = now
 
     encoded_header = _b64url_encode(_json_dumps(header))
     encoded_payload = _b64url_encode(_json_dumps(payload))
     signing_input = f"{encoded_header}.{encoded_payload}".encode("ascii")
     signature = _b64url_encode(_sign(signing_input))
     return f"{encoded_header}.{encoded_payload}.{signature}"
+
+
+def get_token_jti(token):
+    try:
+        payload = decode_jwt(token)
+    except ValueError:
+        return ""
+    return payload.get("jti", "")
+
+
+def _token_hash(token):
+    return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
 
 
 def decode_jwt(token, expected_type=None):
@@ -100,12 +127,26 @@ def get_user_from_payload(payload):
 
 
 def is_token_blacklisted(token):
-    return BlacklistedToken.objects.filter(token=token).exists()
+    if not token:
+        return False
+    token_hash = _token_hash(token)
+    token_jti = get_token_jti(token)
+    queryset = BlacklistedToken.objects.filter(token_hash=token_hash)
+    if token_jti:
+        queryset = queryset | BlacklistedToken.objects.filter(token_jti=token_jti)
+    queryset = queryset | BlacklistedToken.objects.filter(token=token)
+    return queryset.exists()
 
 
 def blacklist_token(token):
     if token:
-        BlacklistedToken.objects.create(token=token)
+        BlacklistedToken.objects.get_or_create(
+            token_hash=_token_hash(token),
+            defaults={
+                "token": "",
+                "token_jti": get_token_jti(token),
+            },
+        )
 
 
 def authenticate_request(request):
@@ -153,29 +194,124 @@ def build_auth_response_payload(user):
     return {
         "authenticated": True,
         "user": {
+            "id": user.id,
+            "public_id": str(user.public_id),
             "username": user.username,
+            "email": user.email,
             "first_name": user.first_name,
             "last_name": user.last_name,
             "role": getattr(user, "get_role_display", lambda: "Utilisateur")(),
             "role_code": getattr(user, "role", ""),
             "is_platform_admin": getattr(user, "is_platform_admin", False),
+            "platform_role": getattr(user, "platform_role", ""),
+            "is_super_root": getattr(user, "is_super_root", False),
+            "email_verified": getattr(user, "email_verified", False),
+            "phone_verified": getattr(user, "phone_verified", False),
+            "two_factor_enabled": getattr(user, "two_factor_enabled", False),
+            "two_factor_required": getattr(user, "requires_two_factor", False),
             "organization_id": user.organization_id,
             "organization_name": user.organization.name if user.organization_id else "",
             "hotel_id": user.hotel_id,
             "hotel_name": user.hotel.name if user.hotel_id else "",
-            "permissions": build_user_permission_map(user),
+            "permissions": PermissionService.build_permission_map(user),
+            "business_permissions": sorted(PermissionService.build_business_action_set(user)),
         },
     }
 
 
-def attach_auth_cookies(response, user, remember_me=False):
-    access_token = generate_jwt(user, "access", remember_me=remember_me)
-    refresh_token = generate_jwt(user, "refresh", remember_me=remember_me)
+def _client_ip(request):
+    if request is None:
+        return None
+    forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR")
+
+
+def _short_device_name(user_agent):
+    if not user_agent:
+        return "Appareil inconnu"
+    lower = user_agent.lower()
+    browser = "Navigateur"
+    if "edg/" in lower:
+        browser = "Edge"
+    elif "chrome/" in lower:
+        browser = "Chrome"
+    elif "firefox/" in lower:
+        browser = "Firefox"
+    elif "safari/" in lower:
+        browser = "Safari"
+    os_name = "OS inconnu"
+    if "windows" in lower:
+        os_name = "Windows"
+    elif "mac os" in lower:
+        os_name = "macOS"
+    elif "android" in lower:
+        os_name = "Android"
+    elif "iphone" in lower or "ipad" in lower:
+        os_name = "iOS"
+    elif "linux" in lower:
+        os_name = "Linux"
+    return f"{browser} sur {os_name}"
+
+
+def _client_device(user_agent):
+    name = _short_device_name(user_agent)
+    if " sur " in name:
+        browser, os_name = name.split(" sur ", 1)
+        return browser, os_name
+    return "", ""
+
+
+def create_user_session(user, refresh_token, request=None):
+    payload = decode_jwt(refresh_token, expected_type="refresh")
+    user_agent = request.META.get("HTTP_USER_AGENT", "") if request is not None else ""
+    browser, os_name = _client_device(user_agent)
+    session, _ = UserSession.objects.update_or_create(
+        refresh_token_jti=payload["jti"],
+        defaults={
+            "user": user,
+            "device_name": _short_device_name(user_agent),
+            "browser": browser,
+            "os": os_name,
+            "ip_address": _client_ip(request),
+            "user_agent": user_agent,
+            "last_activity": timezone.now(),
+            "is_active": True,
+            "revoked_at": None,
+        },
+    )
+    return session
+
+
+def revoke_user_session_by_token(refresh_token):
+    jti = get_token_jti(refresh_token)
+    if jti:
+        UserSession.objects.filter(refresh_token_jti=jti, is_active=True).update(
+            is_active=False,
+            revoked_at=timezone.now(),
+        )
+
+
+def attach_auth_cookies(
+    response,
+    user,
+    remember_me=False,
+    request=None,
+    access_lifetime=None,
+    refresh_lifetime=None,
+    mfa_context="",
+):
+    access_lifetime = int(access_lifetime or _access_lifetime_for_user(user))
+    refresh_lifetime = int(refresh_lifetime or settings.JWT_REFRESH_LIFETIME_SECONDS)
+    access_token = generate_jwt(user, "access", remember_me=remember_me, lifetime=access_lifetime, mfa_context=mfa_context)
+    refresh_token = generate_jwt(user, "refresh", remember_me=remember_me, lifetime=refresh_lifetime, mfa_context=mfa_context)
+    create_user_session(user, refresh_token, request=request)
 
     response.set_cookie(
         settings.JWT_ACCESS_COOKIE_NAME,
         access_token,
-        max_age=settings.JWT_ACCESS_LIFETIME_SECONDS,
+        max_age=access_lifetime,
         httponly=True,
         secure=settings.JWT_COOKIE_SECURE,
         samesite=settings.JWT_COOKIE_SAMESITE,
@@ -189,7 +325,7 @@ def attach_auth_cookies(response, user, remember_me=False):
         "path": "/api/auth/",
     }
     if remember_me:
-        refresh_cookie_kwargs["max_age"] = settings.JWT_REFRESH_LIFETIME_SECONDS
+        refresh_cookie_kwargs["max_age"] = refresh_lifetime
 
     response.set_cookie(
         settings.JWT_REFRESH_COOKIE_NAME,

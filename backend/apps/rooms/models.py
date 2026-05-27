@@ -6,7 +6,9 @@ from django.db import models
 from django.utils import timezone
 
 from apps.history.models import HistoryEntry
-from apps.history.services import log_history
+from apps.audit_logs.services import HotelAuditService
+
+log_history = HotelAuditService.log_history
 
 
 class RoomType(models.Model):
@@ -526,3 +528,310 @@ class RoomMaintenanceIncident(models.Model):
                 },
                 hotel=self.hotel,
             )
+
+
+class RoomLiveStatus(models.Model):
+    class HotelStatus(models.TextChoices):
+        AVAILABLE = "available", "Disponible"
+        OCCUPIED = "occupied", "Occupee"
+        RESERVED = "reserved", "Reservee"
+        CLEANING = "cleaning", "En nettoyage"
+        MAINTENANCE = "maintenance", "Maintenance"
+
+    class PresenceStatus(models.TextChoices):
+        DETECTED = "detected", "Detectee"
+        NONE = "none", "Aucune"
+
+    class DoorStatus(models.TextChoices):
+        OPEN = "open", "Ouverte"
+        OPEN_LONG = "open_long", "Ouverte trop longtemps"
+        CLOSED = "closed", "Fermee"
+
+    class DeviceStatus(models.TextChoices):
+        ON = "on", "Allume"
+        OFF = "off", "Eteint"
+
+    hotel = models.ForeignKey(
+        "tenancy.Hotel",
+        on_delete=models.PROTECT,
+        related_name="room_live_statuses",
+        blank=True,
+        null=True,
+        verbose_name="Hotel",
+    )
+    room = models.OneToOneField(
+        Room,
+        on_delete=models.CASCADE,
+        related_name="live_status",
+        verbose_name="Chambre",
+    )
+    hotel_status = models.CharField(
+        max_length=20,
+        choices=HotelStatus.choices,
+        default=HotelStatus.AVAILABLE,
+        verbose_name="Statut hotelier",
+    )
+    presence_status = models.CharField(
+        max_length=20,
+        choices=PresenceStatus.choices,
+        default=PresenceStatus.NONE,
+        verbose_name="Presence",
+    )
+    door_status = models.CharField(
+        max_length=20,
+        choices=DoorStatus.choices,
+        default=DoorStatus.CLOSED,
+        verbose_name="Porte",
+    )
+    ac_status = models.CharField(
+        max_length=10,
+        choices=DeviceStatus.choices,
+        default=DeviceStatus.OFF,
+        verbose_name="Climatisation",
+    )
+    light_status = models.CharField(
+        max_length=10,
+        choices=DeviceStatus.choices,
+        default=DeviceStatus.OFF,
+        verbose_name="Lumiere",
+    )
+    temperature = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=22,
+        verbose_name="Temperature (C)",
+    )
+    humidity = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=60,
+        verbose_name="Humidite (%)",
+    )
+    last_activity_at = models.DateTimeField(blank=True, null=True, verbose_name="Derniere activite")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Mis a jour le")
+
+    class Meta:
+        verbose_name = "Statut live chambre"
+        verbose_name_plural = "Statuts live chambres"
+        indexes = [
+            models.Index(fields=["hotel"], name="rm_live_hotel_idx"),
+            models.Index(fields=["hotel", "hotel_status"], name="rm_live_hotel_status_idx"),
+            models.Index(fields=["hotel", "presence_status"], name="rm_live_hotel_presence_idx"),
+        ]
+
+    def __str__(self):
+        return f"Live {self.room.number}"
+
+    def clean(self):
+        if self.room_id and self.room and self.room.hotel_id and not self.hotel_id:
+            self.hotel = self.room.hotel
+
+
+class RoomSensor(models.Model):
+    class SensorType(models.TextChoices):
+        PRESENCE = "presence", "Presence (mmWave)"
+        DOOR = "door", "Porte"
+        TEMPERATURE = "temperature", "Temperature"
+        HUMIDITY = "humidity", "Humidite"
+        ENERGY = "energy", "Energie"
+        LIGHT = "light", "Lumiere"
+        AC = "ac", "Climatisation"
+        MULTI = "multi", "Capteur multi"
+
+    class Status(models.TextChoices):
+        ONLINE = "online", "En ligne"
+        OFFLINE = "offline", "Hors ligne"
+        ERROR = "error", "Erreur"
+
+    hotel = models.ForeignKey(
+        "tenancy.Hotel",
+        on_delete=models.PROTECT,
+        related_name="room_sensors",
+        blank=True,
+        null=True,
+        verbose_name="Hotel",
+    )
+    room = models.ForeignKey(
+        Room,
+        on_delete=models.CASCADE,
+        related_name="sensors",
+        verbose_name="Chambre",
+    )
+    sensor_type = models.CharField(
+        max_length=20,
+        choices=SensorType.choices,
+        verbose_name="Type",
+    )
+    name = models.CharField(max_length=100, verbose_name="Nom")
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.ONLINE,
+        verbose_name="Statut",
+    )
+    last_seen_at = models.DateTimeField(blank=True, null=True, verbose_name="Derniere activite")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Cree le")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Mis a jour le")
+
+    class Meta:
+        verbose_name = "Capteur chambre"
+        verbose_name_plural = "Capteurs chambres"
+        ordering = ["room", "sensor_type"]
+        indexes = [
+            models.Index(fields=["hotel", "status"], name="rm_sensor_hotel_status_idx"),
+            models.Index(fields=["hotel", "sensor_type"], name="rm_sensor_hotel_type_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.room.number} - {self.get_sensor_type_display()}"
+
+    def clean(self):
+        if self.room_id and self.room and self.room.hotel_id and not self.hotel_id:
+            self.hotel = self.room.hotel
+
+
+class RoomAlert(models.Model):
+    class AlertType(models.TextChoices):
+        PRESENCE_ANOMALY = "presence_anomaly", "Anomalie presence"
+        DOOR_OPEN_LONG = "door_open_long", "Porte ouverte trop longtemps"
+        TEMPERATURE_HIGH = "temperature_high", "Temperature elevee"
+        TEMPERATURE_LOW = "temperature_low", "Temperature basse"
+        SENSOR_OFFLINE = "sensor_offline", "Capteur hors ligne"
+        ENERGY_SPIKE = "energy_spike", "Pic energetique"
+        MAINTENANCE = "maintenance", "Maintenance requise"
+
+    class Severity(models.TextChoices):
+        INFO = "info", "Information"
+        WARNING = "warning", "Avertissement"
+        CRITICAL = "critical", "Critique"
+
+    hotel = models.ForeignKey(
+        "tenancy.Hotel",
+        on_delete=models.PROTECT,
+        related_name="room_smart_alerts",
+        blank=True,
+        null=True,
+        verbose_name="Hotel",
+    )
+    room = models.ForeignKey(
+        Room,
+        on_delete=models.CASCADE,
+        related_name="smart_alerts",
+        verbose_name="Chambre",
+    )
+    alert_type = models.CharField(
+        max_length=30,
+        choices=AlertType.choices,
+        verbose_name="Type d'alerte",
+    )
+    severity = models.CharField(
+        max_length=20,
+        choices=Severity.choices,
+        default=Severity.WARNING,
+        verbose_name="Severite",
+    )
+    message = models.TextField(verbose_name="Message")
+    is_active = models.BooleanField(default=True, verbose_name="Active")
+    resolved_at = models.DateTimeField(blank=True, null=True, verbose_name="Resolue le")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Cree le")
+
+    class Meta:
+        verbose_name = "Alerte intelligente chambre"
+        verbose_name_plural = "Alertes intelligentes chambres"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["hotel", "is_active"], name="rm_alert_hotel_active_idx"),
+            models.Index(fields=["hotel", "severity"], name="rm_alert_hotel_severity_idx"),
+            models.Index(fields=["hotel", "alert_type"], name="rm_alert_hotel_type_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.room.number} - {self.get_alert_type_display()}"
+
+    def clean(self):
+        if self.room_id and self.room and self.room.hotel_id and not self.hotel_id:
+            self.hotel = self.room.hotel
+
+
+class SensorEvent(models.Model):
+    hotel = models.ForeignKey(
+        "tenancy.Hotel",
+        on_delete=models.PROTECT,
+        related_name="sensor_events",
+        blank=True,
+        null=True,
+        verbose_name="Hotel",
+    )
+    room = models.ForeignKey(
+        Room,
+        on_delete=models.CASCADE,
+        related_name="sensor_events",
+        verbose_name="Chambre",
+    )
+    sensor = models.ForeignKey(
+        RoomSensor,
+        on_delete=models.SET_NULL,
+        related_name="events",
+        blank=True,
+        null=True,
+        verbose_name="Capteur",
+    )
+    event_type = models.CharField(max_length=50, verbose_name="Type d'evenement")
+    payload = models.JSONField(default=dict, blank=True, verbose_name="Donnees")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Cree le")
+
+    class Meta:
+        verbose_name = "Evenement capteur"
+        verbose_name_plural = "Evenements capteurs"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["hotel", "created_at"], name="sensor_event_hotel_date_idx"),
+            models.Index(fields=["hotel", "event_type"], name="sensor_event_hotel_type_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.room.number} - {self.event_type}"
+
+    def clean(self):
+        if self.room_id and self.room and self.room.hotel_id and not self.hotel_id:
+            self.hotel = self.room.hotel
+
+
+class EnergyReading(models.Model):
+    hotel = models.ForeignKey(
+        "tenancy.Hotel",
+        on_delete=models.PROTECT,
+        related_name="energy_readings",
+        blank=True,
+        null=True,
+        verbose_name="Hotel",
+    )
+    room = models.ForeignKey(
+        Room,
+        on_delete=models.CASCADE,
+        related_name="energy_readings",
+        verbose_name="Chambre",
+    )
+    value_kwh = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        verbose_name="Consommation (kWh)",
+    )
+    recorded_at = models.DateTimeField(default=timezone.now, verbose_name="Enregistre le")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Cree le")
+
+    class Meta:
+        verbose_name = "Lecture energie"
+        verbose_name_plural = "Lectures energie"
+        ordering = ["-recorded_at"]
+        indexes = [
+            models.Index(fields=["hotel", "recorded_at"], name="energy_hotel_date_idx"),
+            models.Index(fields=["hotel", "room"], name="energy_hotel_room_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.room.number} - {self.value_kwh} kWh"
+
+    def clean(self):
+        if self.room_id and self.room and self.room.hotel_id and not self.hotel_id:
+            self.hotel = self.room.hotel

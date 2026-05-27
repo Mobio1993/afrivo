@@ -32,6 +32,89 @@
   border-color: rgba(59, 130, 246, 0.08);
 }
 
+.relocation-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(8px);
+}
+
+.relocation-modal {
+  width: min(620px, 100%);
+  max-height: min(760px, calc(100vh - 48px));
+  overflow: auto;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 22px;
+  background: #ffffff;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.24);
+}
+
+.relocation-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 24px 24px 18px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.86);
+}
+
+.relocation-modal-head h3 {
+  margin: 4px 0 6px;
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.relocation-modal-head p {
+  margin: 0;
+  color: #64748b;
+}
+
+.relocation-modal-close {
+  width: 40px;
+  height: 40px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #64748b;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.relocation-current-room {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 18px 24px 0;
+  padding: 14px 16px;
+  border: 1px solid rgba(15, 157, 138, 0.18);
+  border-radius: 16px;
+  background: rgba(15, 157, 138, 0.08);
+  color: #64748b;
+}
+
+.relocation-current-room strong {
+  color: #0f172a;
+  font-size: 18px;
+}
+
+.relocation-modal .form-grid {
+  padding: 18px 24px 0;
+}
+
+.relocation-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 18px 24px 24px;
+  border-top: 1px solid rgba(226, 232, 240, 0.86);
+}
+
 @media (max-width: 1180px) {
   .operation-detail-page .dashboard-kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -47,5 +130,14 @@
 @media (max-width: 640px) {
   .operation-detail-page .dashboard-kpi-grid {
     grid-template-columns: 1fr;
+  }
+
+  .relocation-modal-actions {
+    flex-direction: column;
+  }
+
+  .relocation-modal-actions .primary-button,
+  .relocation-modal-actions .secondary-button {
+    width: 100%;
   }
 }

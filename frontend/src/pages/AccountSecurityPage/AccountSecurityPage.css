@@ -1,0 +1,482 @@
+.account-security-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px;
+  color: var(--text-main);
+}
+
+.account-security-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.account-security-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #0F6E56;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.account-security-header h1 {
+  margin: 4px 0;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.account-security-header p,
+.iam-panel-head p,
+.iam-summary-grid p,
+.iam-session-main p,
+.iam-session-main small {
+  margin: 0;
+  color: var(--text-soft);
+}
+
+.account-security-danger,
+.iam-panel-head button,
+.iam-session-revoke {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.account-security-danger {
+  border: 0;
+  background: #A32D2D;
+  color: #fff;
+}
+
+.account-security-danger:disabled,
+.iam-panel-head button:disabled,
+.iam-session-revoke:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.iam-alert {
+  padding: 11px 14px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.iam-alert.error {
+  border: 0.5px solid #F09595;
+  background: #FCEBEB;
+  color: #A32D2D;
+}
+
+.iam-alert.success {
+  border: 0.5px solid #9FE1CB;
+  background: #E1F5EE;
+  color: #085041;
+}
+
+.iam-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.iam-summary-grid article,
+.iam-panel {
+  border: 0.5px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+}
+
+.iam-summary-grid article {
+  padding: 14px;
+}
+
+.iam-summary-grid span {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.iam-summary-grid strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 20px;
+}
+
+.iam-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+  gap: 12px;
+}
+
+.iam-panel {
+  overflow: hidden;
+}
+
+.iam-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 0.5px solid var(--border-soft);
+  background: var(--bg-soft);
+}
+
+.iam-panel-head.inline {
+  border-bottom: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.iam-panel-head h2 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
+.iam-panel-head button {
+  border: 0.5px solid var(--border-soft);
+  background: var(--bg-card);
+  color: var(--text-main);
+}
+
+.iam-session-list,
+.iam-permission-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.iam-two-factor-box {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 0.5px solid var(--border-soft);
+}
+
+.iam-password-box {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-bottom: 0.5px solid var(--border-soft);
+  background: linear-gradient(180deg, rgba(225, 245, 238, 0.52), rgba(255, 255, 255, 0));
+}
+
+.iam-password-form {
+  display: grid;
+  gap: 10px;
+}
+
+.iam-password-form label {
+  display: grid;
+  gap: 5px;
+}
+
+.iam-password-form label span {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.iam-password-form input {
+  width: 100%;
+  min-height: 38px;
+  border: 0.5px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  padding: 0 11px;
+  background: var(--bg-card);
+  color: var(--text-main);
+  font-size: 13px;
+}
+
+.iam-password-form input:focus {
+  outline: none;
+  border-color: #1D9E75;
+  box-shadow: 0 0 0 3px rgba(29, 158, 117, 0.12);
+}
+
+.iam-password-form input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.iam-password-policy {
+  display: grid;
+  gap: 9px;
+  padding: 10px;
+  border: 0.5px solid #BFE9DD;
+  border-radius: var(--radius-md);
+  background: #F4FBF8;
+}
+
+.iam-password-policy-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.iam-password-policy-head span {
+  color: #0F6E56;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.iam-password-policy-head strong {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+}
+
+.iam-password-policy-head strong.strong {
+  background: #E1F5EE;
+  color: #085041;
+}
+
+.iam-password-policy-head strong.weak {
+  background: #FAEEDA;
+  color: #633806;
+}
+
+.iam-password-checks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.iam-password-checks span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-soft);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.iam-password-checks i {
+  color: #A9A69C;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.iam-password-checks span.valid {
+  color: #0F6E56;
+  font-weight: 700;
+}
+
+.iam-password-checks span.valid i {
+  color: #1D9E75;
+}
+
+.iam-password-submit {
+  min-height: 38px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: #1D9E75;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.iam-password-submit:hover:not(:disabled) {
+  background: #0F6E56;
+}
+
+.iam-password-submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.iam-two-factor-box strong {
+  font-size: 14px;
+}
+
+.iam-two-factor-box p {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.iam-two-factor-form,
+.iam-two-factor-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.iam-two-factor-form input {
+  flex: 1;
+  min-width: 120px;
+  height: 36px;
+  border: 0.5px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  padding: 0 10px;
+  background: var(--bg-card);
+  color: var(--text-main);
+}
+
+.iam-two-factor-form button,
+.iam-two-factor-actions button {
+  min-height: 36px;
+  border: 0.5px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  padding: 0 12px;
+  background: #E1F5EE;
+  color: #085041;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.iam-two-factor-actions button.danger {
+  background: #FCEBEB;
+  color: #A32D2D;
+  border-color: #F09595;
+}
+
+.iam-two-factor-form button:disabled,
+.iam-two-factor-actions button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.iam-session-card {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 11px;
+  border: 0.5px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+}
+
+.iam-session-card.off {
+  opacity: 0.64;
+}
+
+.iam-session-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: #E1F5EE;
+  color: #085041;
+  font-size: 19px;
+}
+
+.iam-session-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+.iam-session-title strong {
+  font-size: 14px;
+}
+
+.iam-session-title span {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #EAF3DE;
+  color: #3B6D11;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.iam-session-main p,
+.iam-session-main small {
+  display: block;
+  font-size: 12px;
+}
+
+.iam-session-revoke {
+  border: 0.5px solid #F09595;
+  background: #FCEBEB;
+  color: #A32D2D;
+}
+
+.iam-permission-row {
+  display: grid;
+  gap: 9px;
+  padding: 11px;
+  border: 0.5px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+}
+
+.iam-permission-row strong {
+  font-size: 13px;
+}
+
+.iam-permission-row div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.iam-permission-row span {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #E1F5EE;
+  color: #085041;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.iam-empty {
+  padding: 24px;
+  border: 0.5px dashed var(--border-soft);
+  border-radius: var(--radius-md);
+  color: var(--text-soft);
+  text-align: center;
+}
+
+@media (max-width: 980px) {
+  .iam-summary-grid,
+  .iam-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .account-security-header {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 640px) {
+  .account-security-page {
+    padding: 16px;
+  }
+
+  .iam-session-card {
+    grid-template-columns: 1fr;
+  }
+
+  .iam-password-checks {
+    grid-template-columns: 1fr;
+  }
+}

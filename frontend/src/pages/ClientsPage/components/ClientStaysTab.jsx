@@ -1,3 +1,6 @@
+import { useEffect, useState } from "react";
+
+import { getClientStays } from "../../../services/clientsService";
 import { formatAmount, formatDate, formatDateTime, normalizeValue } from "../utils";
 import { EmptyStateCard } from "./EmptyStateCard";
 
@@ -22,12 +25,34 @@ function StayTimelineBlock({ label, planned, actual }) {
 }
 
 export function ClientStaysTab({ selectedClient }) {
+  const [payload, setPayload] = useState({
+    stay_portfolio: selectedClient?.stay_portfolio || {},
+    stay_history: selectedClient?.stay_history || [],
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!selectedClient?.id) return undefined;
+    setPayload({
+      stay_portfolio: selectedClient.stay_portfolio || {},
+      stay_history: selectedClient.stay_history || [],
+    });
+    setLoading(true);
+    setError("");
+    getClientStays(selectedClient.id)
+      .then((data) => setPayload(data))
+      .catch((requestError) => setError(requestError.message || "Impossible de charger les sejours."))
+      .finally(() => setLoading(false));
+    return undefined;
+  }, [selectedClient?.id]);
+
   if (!selectedClient) {
     return null;
   }
 
-  const portfolio = selectedClient.stay_portfolio || {};
-  const stays = selectedClient.stay_history || [];
+  const portfolio = payload.stay_portfolio || {};
+  const stays = payload.stay_history || [];
 
   return (
     <div className="table-like clients-stays-tab">
@@ -53,6 +78,9 @@ export function ClientStaysTab({ selectedClient }) {
           meta="Base utile pour le futur folio client."
         />
       </div>
+
+      {loading ? <div className="status-box">Chargement des sejours...</div> : null}
+      {error ? <div className="alert-box">{error}</div> : null}
 
       {stays.length ? (
         <div className="table-like">

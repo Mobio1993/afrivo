@@ -1,10 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { Link, useParams } from "react-router-dom";
 
 import { fetchJson, postJson } from "../../api/client";
-import { AppSelect } from "../../components/AppSelect";
-import { DatePicker } from "../../components/DatePicker";
-import { DateTimePicker } from "../../components/DateTimePicker";
+import { useAuth } from "../../auth/AuthContext";
+import { canPerformAction } from "../../auth/permissions";
+import { AppSelect } from "../../shared/components/AppSelect";
+import { ConfirmModal } from "../../shared/components/ConfirmModal";
+import { DatePicker } from "../../shared/components/DatePicker";
+import { DateTimePicker } from "../../shared/components/DateTimePicker";
+import { BookingDetailPage } from "./BookingDetailPage";
+import DayUseDetailPage from "./DayUseDetailPage";
+import PaymentDetailPage from "./PaymentDetailPage";
 import "./OperationDetailPage.css";
 
 const endpointMap = {
@@ -13,6 +20,52 @@ const endpointMap = {
   "day-uses": "/api/operations/day-uses/",
   payments: "/api/operations/payments/",
 };
+
+const paymentEntityTypes = new Set(["payments", "payment", "paiements", "paiement"]);
+const dayUseEntityTypes = new Set(["day-uses", "day-use", "dayuse", "day_use"]);
+
+export function OperationDetailPage() {
+  const { entityType, entityId } = useParams();
+
+  if (paymentEntityTypes.has(entityType)) {
+    return <PaymentDetailPage paymentId={entityId} />;
+  }
+
+  if (dayUseEntityTypes.has(entityType)) {
+    return <DayUseDetailPage dayUseId={entityId} />;
+  }
+
+  return <OperationDetailContent />;
+}
+
+const pageMotion = {
+  initial: { opacity: 0, y: 18 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.24, ease: "easeOut" } },
+};
+
+const statusMotion = {
+  initial: { opacity: 0, y: -8, scale: 0.985 },
+  animate: { opacity: 1, y: 0, scale: 1 },
+  exit: { opacity: 0, y: -8, scale: 0.985 },
+  transition: { duration: 0.18, ease: "easeOut" },
+};
+
+const cardGridMotion = {
+  animate: { transition: { staggerChildren: 0.045 } },
+};
+
+const cardMotion = {
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.2, ease: "easeOut" } },
+};
+
+const actionTapMotion = { scale: 0.98 };
+
+function getTodayISO() {
+  const today = new Date();
+  today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+  return today.toISOString().slice(0, 10);
+}
 
 function toDateTimeLocal(value) {
   if (!value || value === "-") {
@@ -85,6 +138,9 @@ function getActionConfirmation(action) {
   if (action.endpoint.endsWith("/cancel/") && action.endpoint.includes("/bookings/")) {
     return "Annuler cette reservation ? Cette action interrompt sa prise en charge operationnelle.";
   }
+  if (action.endpoint.endsWith("/no-show/")) {
+    return "Marquer cette reservation en no-show ? La chambre sera liberee et l'action sera journalisee.";
+  }
   if (action.endpoint.endsWith("/refund/")) {
     return "Confirmer le remboursement de ce paiement ? Cette action modifie son statut financier.";
   }
@@ -110,12 +166,75 @@ function getWorkflowConfirmation(workflowType) {
   return "";
 }
 
+function getActionConfirmationMeta(action) {
+  const endpoint = action?.endpoint || "";
+  const isDanger =
+    action?.variant === "danger" ||
+    endpoint.endsWith("/cancel/") ||
+    endpoint.endsWith("/refund/");
+
+  if (endpoint.endsWith("/confirm/")) {
+    return { title: "Confirmer la reservation", confirmLabel: "Confirmer" };
+  }
+  if (endpoint.endsWith("/cancel/") && endpoint.includes("/bookings/")) {
+    return { title: "Annuler la reservation", confirmLabel: "Annuler la reservation", variant: "danger" };
+  }
+  if (endpoint.endsWith("/no-show/")) {
+    return { title: "Marquer no-show", confirmLabel: "Marquer no-show", variant: "danger" };
+  }
+  if (endpoint.endsWith("/refund/")) {
+    return { title: "Rembourser le paiement", confirmLabel: "Confirmer le remboursement", variant: "danger" };
+  }
+  if (endpoint.endsWith("/cancel/") && endpoint.includes("/payments/")) {
+    return { title: "Annuler le paiement", confirmLabel: "Annuler le paiement", variant: "danger" };
+  }
+  if (endpoint.endsWith("/check-in/")) {
+    return { title: "Confirmer l'entree", confirmLabel: action?.label || "Confirmer" };
+  }
+  if (endpoint.endsWith("/check-out/")) {
+    return { title: "Confirmer la sortie", confirmLabel: action?.label || "Confirmer" };
+  }
+  if (endpoint.endsWith("/complete-cleaning/")) {
+    return { title: "Terminer le nettoyage", confirmLabel: action?.label || "Confirmer" };
+  }
+
+  return {
+    title: isDanger ? "Confirmer cette action sensible" : "Confirmer cette action",
+    confirmLabel: action?.label || "Confirmer",
+    variant: isDanger ? "danger" : "default",
+  };
+}
+
+function getActionPermissionCode(action) {
+  const endpoint = action?.endpoint || "";
+  if (endpoint.endsWith("/confirm/")) return null;
+  if (endpoint.endsWith("/cancel/") && endpoint.includes("/bookings/")) return "operations.cancel";
+  if (endpoint.endsWith("/no-show/")) return "operations.no_show";
+  if (endpoint.endsWith("/refund/")) return "payments.refund";
+  if (endpoint.endsWith("/cancel/") && endpoint.includes("/payments/")) return "payments.cancel";
+  if (endpoint.endsWith("/check-in/")) return "operations.check_in";
+  if (endpoint.endsWith("/check-out/")) return "operations.check_out";
+  if (endpoint.endsWith("/complete-cleaning/")) return "rooms.cleaning_complete";
+  return null;
+}
+
+function getWorkflowConfirmationMeta(workflowType) {
+  if (workflowType === "booking_check_in") {
+    return { title: "Lancer le check-in guide", confirmLabel: "Lancer le check-in" };
+  }
+  return { title: "Confirmer le workflow", confirmLabel: "Confirmer" };
+}
+
 function validateEditForm(entityType, form) {
   const errors = {};
 
   if (entityType === "bookings") {
+    const todayISO = getTodayISO();
     if (!form.check_in_date) {
       errors.check_in_date = "Renseigne la date d'arrivee.";
+    }
+    if (form.check_in_date && form.check_in_date < todayISO) {
+      errors.check_in_date = "La date d'arrivee ne peut pas etre anterieure a aujourd'hui.";
     }
     if (!form.check_out_date) {
       errors.check_out_date = "Renseigne la date de depart.";
@@ -201,14 +320,65 @@ function validateWorkflowForm(workflowType, form) {
   return { isValid: Object.keys(errors).length === 0, errors };
 }
 
-export function OperationDetailPage() {
+function getRelocationEndpoint(entityType, entityId) {
+  if (entityType === "bookings") {
+    return `/api/operations/bookings/${entityId}/relocate/`;
+  }
+  if (entityType === "stays") {
+    return `/api/operations/stays/${entityId}/relocate/`;
+  }
+  return "";
+}
+
+function getRelocationEligibility(entityType, detail) {
+  if (entityType === "bookings") {
+    return {
+      available: ["pending", "confirmed"].includes(detail?.status_code) && Boolean(detail?.room_id || detail?.room?.id),
+      label: "Reloger la reservation",
+      description: "Deplace cette reservation vers une autre chambre compatible avant le check-in.",
+      roomStatusKey: "can_assign_booking",
+    };
+  }
+  if (entityType === "stays") {
+    return {
+      available: detail?.status_code === "in_progress" && Boolean(detail?.room_id || detail?.room?.id),
+      label: "Reloger le sejour",
+      description: "Deplace le sejour en cours vers une chambre disponible et trace l'ancienne chambre en nettoyage.",
+      roomStatusKey: "can_open_stay",
+    };
+  }
+  return { available: false, label: "Reloger", description: "", roomStatusKey: "" };
+}
+
+function validateRelocationForm(form) {
+  const errors = {};
+  if (!form.new_room_id) {
+    errors.new_room_id = "Selectionne la nouvelle chambre.";
+  }
+  if (!String(form.reason || "").trim()) {
+    errors.reason = "Le motif du relogement est obligatoire.";
+  }
+  return { isValid: Object.keys(errors).length === 0, errors };
+}
+
+function OperationDetailContent() {
   const { entityType, entityId } = useParams();
+  const { user } = useAuth();
+  const todayISO = useMemo(() => getTodayISO(), []);
   const [detail, setDetail] = useState(null);
   const [choices, setChoices] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [paymentForm, setPaymentForm] = useState({});
   const [workflowForms, setWorkflowForms] = useState({});
   const [status, setStatus] = useState({ loading: true, error: "", warning: "", success: "" });
+  const [confirmDialog, setConfirmDialog] = useState(null);
+  const [relocationOpen, setRelocationOpen] = useState(false);
+  const [relocationForm, setRelocationForm] = useState({
+    new_room_id: "",
+    reason: "",
+    notes: "",
+    rate_impact_mode: "keep_original",
+  });
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -219,6 +389,31 @@ export function OperationDetailPage() {
 
   const editValidation = useMemo(() => validateEditForm(entityType, editForm), [editForm, entityType]);
   const relatedPaymentValidation = useMemo(() => validateRelatedPaymentForm(paymentForm), [paymentForm]);
+  const relocationValidation = useMemo(() => validateRelocationForm(relocationForm), [relocationForm]);
+  const relocationEligibility = useMemo(
+    () => getRelocationEligibility(entityType, detail),
+    [detail, entityType],
+  );
+  const canRelocate = canPerformAction(user, "operations.relocate");
+  const visibleContextActions = useMemo(
+    () => (detail?.context_actions || []).filter((action) => {
+      const permissionCode = getActionPermissionCode(action);
+      return !permissionCode || canPerformAction(user, permissionCode);
+    }),
+    [detail, user],
+  );
+  const relocationRoomOptions = useMemo(() => {
+    const currentRoomId = String(detail?.room_id || detail?.room?.id || "");
+    const roomTypeId = Number(detail?.room_type_id || detail?.room?.room_type_id || 0);
+    return (choices?.rooms || []).filter((room) => {
+      const compatibleType = !roomTypeId || Number(room.room_type_id) === roomTypeId;
+      return (
+        compatibleType &&
+        String(room.id) !== currentRoomId &&
+        Boolean(room[relocationEligibility.roomStatusKey])
+      );
+    });
+  }, [choices?.rooms, detail, relocationEligibility.roomStatusKey]);
   const workflowValidations = useMemo(
     () =>
       Object.fromEntries(
@@ -376,13 +571,41 @@ export function OperationDetailPage() {
       });
   }, [endpoint]);
 
+  function requestConfirmation({ title, message, confirmLabel = "Confirmer", variant = "default" }) {
+    if (!message) {
+      return Promise.resolve(true);
+    }
+
+    return new Promise((resolve) => {
+      setConfirmDialog({
+        title,
+        message,
+        confirmLabel,
+        variant,
+        resolve,
+      });
+    });
+  }
+
+  function resolveConfirmation(confirmed) {
+    setConfirmDialog((current) => {
+      current?.resolve?.(confirmed);
+      return null;
+    });
+  }
+
   async function handleAction(action) {
     if (!action?.endpoint) {
       return;
     }
 
     const confirmationMessage = getActionConfirmation(action);
-    if (confirmationMessage && !window.confirm(confirmationMessage)) {
+    const confirmationMeta = getActionConfirmationMeta(action);
+    const confirmed = await requestConfirmation({
+      ...confirmationMeta,
+      message: confirmationMessage,
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -409,7 +632,15 @@ export function OperationDetailPage() {
     }
   }
 
-  async function handleFormSubmit(event, actionEndpoint, body, successLabel, confirmationMessage = "", validation = { isValid: true }) {
+  async function handleFormSubmit(
+    event,
+    actionEndpoint,
+    body,
+    successLabel,
+    confirmationMessage = "",
+    validation = { isValid: true },
+    confirmationMeta = {},
+  ) {
     event.preventDefault();
     if (!validation.isValid) {
       setStatus({
@@ -420,7 +651,11 @@ export function OperationDetailPage() {
       });
       return;
     }
-    if (confirmationMessage && !window.confirm(confirmationMessage)) {
+    const confirmed = await requestConfirmation({
+      ...confirmationMeta,
+      message: confirmationMessage,
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -447,6 +682,57 @@ export function OperationDetailPage() {
     }
   }
 
+  function openRelocationModal() {
+    setRelocationForm({
+      new_room_id: "",
+      reason: "",
+      notes: "",
+      rate_impact_mode: "keep_original",
+    });
+    setRelocationOpen(true);
+  }
+
+  async function handleRelocationSubmit(event) {
+    event.preventDefault();
+    if (!relocationValidation.isValid) {
+      setStatus({
+        loading: false,
+        error: "Le relogement n'est pas encore pret. Verifie la chambre et le motif.",
+        warning: "",
+        success: "",
+      });
+      return;
+    }
+
+    const endpoint = getRelocationEndpoint(entityType, entityId);
+    if (!endpoint) {
+      return;
+    }
+
+    setSubmitting(true);
+    setStatus({ loading: false, error: "", warning: "", success: "" });
+    try {
+      const payload = await postJson(endpoint, relocationForm);
+      setRelocationOpen(false);
+      setStatus({
+        loading: false,
+        error: "",
+        warning: "",
+        success: payload.message || "Relogement effectue avec succes.",
+      });
+      await loadEntityData();
+    } catch (error) {
+      setStatus({
+        loading: false,
+        error: getRequestError(error, "Relogement impossible."),
+        warning: "",
+        success: "",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   if (status.loading) {
     return <div className="status-box">Chargement de la fiche detaillee...</div>;
   }
@@ -459,9 +745,13 @@ export function OperationDetailPage() {
     return <div className="empty-note">Aucune donnee detaillee disponible.</div>;
   }
 
+  if (entityType === "bookings") {
+    return <BookingDetailPage detail={detail} choices={choices} onReload={loadEntityData} />;
+  }
+
   return (
-    <div className="page-stack dashboard-shell operation-detail-page">
-      <section className="dashboard-hero dashboard-hero-modern detail-hero detail-hero-modern">
+    <motion.div className="page-stack dashboard-shell operation-detail-page" {...pageMotion}>
+      <motion.section className="dashboard-hero dashboard-hero-modern detail-hero detail-hero-modern" {...cardMotion}>
         <div className="section-head">
           <div>
             <span className="eyebrow">Fiche detail</span>
@@ -475,44 +765,59 @@ export function OperationDetailPage() {
           <Link className="ghost-button light" to="/operations">
             Retour aux operations
           </Link>
-          {(detail.context_actions || []).map((action) =>
+          {relocationEligibility.available && canRelocate ? (
+            <motion.button
+              type="button"
+              className="secondary-button"
+              disabled={submitting}
+              onClick={openRelocationModal}
+              whileTap={actionTapMotion}
+            >
+              Reloger
+            </motion.button>
+          ) : null}
+          {visibleContextActions.map((action) =>
             action.kind === "link" ? (
               <Link key={action.label} className={`secondary-button ${action.variant === "danger" ? "danger" : ""}`} to={action.path}>
                 {action.label}
               </Link>
             ) : (
-              <button
+              <motion.button
                 key={action.label}
                 type="button"
                 className={`${action.variant === "primary" ? "primary-button" : "secondary-button"} ${action.variant === "danger" ? "danger" : ""}`}
                 disabled={!action.enabled || submitting}
                 onClick={() => handleAction(action)}
+                whileTap={actionTapMotion}
+                animate={{ scale: submitting ? 0.98 : 1 }}
               >
                 {submitting ? "En cours…" : action.label}
-              </button>
+              </motion.button>
             ),
           )}
         </div>
-      </section>
+      </motion.section>
 
-      {status.error ? <div className="alert-box">{status.error}</div> : null}
-      {status.warning ? <div className="warning-box">{status.warning}</div> : null}
-      {status.success ? <div className="success-box">{status.success}</div> : null}
+      <AnimatePresence>
+        {status.error ? <motion.div key="error" className="alert-box" {...statusMotion}>{status.error}</motion.div> : null}
+        {status.warning ? <motion.div key="warning" className="warning-box" {...statusMotion}>{status.warning}</motion.div> : null}
+        {status.success ? <motion.div key="success" className="success-box" {...statusMotion}>{status.success}</motion.div> : null}
+      </AnimatePresence>
 
-      <section className="card-grid dashboard-kpi-grid">
+      <motion.section className="card-grid dashboard-kpi-grid" variants={cardGridMotion} initial="initial" animate="animate">
         {(detail.summary_cards || []).map((card) => (
-          <article key={card.label} className="info-card dashboard-kpi-card">
+          <motion.article key={card.label} className="info-card dashboard-kpi-card" variants={cardMotion}>
             <span className="dashboard-card-label">{card.label}</span>
             <div className="metric dashboard-kpi-value">{card.value}</div>
             <p>{card.meta}</p>
-          </article>
+          </motion.article>
         ))}
-      </section>
+      </motion.section>
 
       <section className="dashboard-columns">
         <section className="list-panel dashboard-panel detail-sections">
           {detail.edit_form ? (
-            <div className="detail-block detail-edit-block">
+            <motion.div className="detail-block detail-edit-block" {...cardMotion}>
               <div className="panel-head">
                 <div>
                   <h3>{detail.edit_form.title}</h3>
@@ -540,8 +845,8 @@ export function OperationDetailPage() {
                         ))}
                       </AppSelect>
                     </FieldGroup>
-                    <FieldGroup label="Arrivee" help="Date de debut de sejour." error={editValidation.errors.check_in_date}>
-                      <DatePicker value={editForm.check_in_date || ""} onChange={(event) => setEditForm((current) => ({ ...current, check_in_date: event.target.value }))} name="check_in_date" required placeholder="Choisir une date" />
+                    <FieldGroup label="Arrivee" help="La reservation est possible uniquement a partir d'aujourd'hui." error={editValidation.errors.check_in_date}>
+                      <DatePicker value={editForm.check_in_date || ""} onChange={(event) => setEditForm((current) => ({ ...current, check_in_date: event.target.value }))} name="check_in_date" minDate={todayISO} required placeholder="Choisir une date" />
                     </FieldGroup>
                     <FieldGroup label="Depart" help="La date de depart doit rester posterieure a l'arrivee." error={editValidation.errors.check_out_date}>
                       <DatePicker value={editForm.check_out_date || ""} onChange={(event) => setEditForm((current) => ({ ...current, check_out_date: event.target.value }))} name="check_out_date" minDate={editForm.check_in_date || ""} required placeholder="Choisir une date" />
@@ -664,11 +969,11 @@ export function OperationDetailPage() {
                   {submitting ? "Enregistrement…" : "Enregistrer les modifications"}
                 </button>
               </form>
-            </div>
+            </motion.div>
           ) : null}
 
           {(detail.workflow_forms || []).map((workflow) => (
-            <div key={workflow.type} className="detail-block detail-workflow-block">
+            <motion.div key={workflow.type} className="detail-block detail-workflow-block" {...cardMotion}>
               <div className="panel-head">
                 <div>
                   <h3>{workflow.title}</h3>
@@ -685,6 +990,7 @@ export function OperationDetailPage() {
                     "Workflow execute avec succes.",
                     getWorkflowConfirmation(workflow.type),
                     workflowValidations[workflow.type] || { isValid: true },
+                    getWorkflowConfirmationMeta(workflow.type),
                   )
                 }
               >
@@ -739,7 +1045,7 @@ export function OperationDetailPage() {
                   </>
                 ) : null}
               </form>
-            </div>
+            </motion.div>
           ))}
 
           {(detail.sections || []).map((section) => (
@@ -913,35 +1219,116 @@ export function OperationDetailPage() {
         </section>
       </section>
 
-      <section className="list-panel dashboard-panel">
-        <div className="panel-head">
-          <div>
-            <h3>Historique</h3>
-            <p>Trace chronologique des actions et evenements utiles pour comprendre le parcours complet de ce flux.</p>
-          </div>
-        </div>
-        <div className="activity-list">
-          {(detail.timeline || []).map((item) => (
-            <article key={item.id} className="activity-card">
-              <div className="activity-badge">{item.label}</div>
-              <div className="activity-content">
-                <strong>{item.description}</strong>
-                <p>{item.module}</p>
-                <div className="activity-meta">
-                  <span>{item.actor}</span>
-                  <span>{item.created_at}</span>
+      <ConfirmModal
+        isOpen={Boolean(confirmDialog)}
+        title={confirmDialog?.title || "Confirmer cette action"}
+        message={confirmDialog?.message || ""}
+        onConfirm={() => resolveConfirmation(true)}
+        onCancel={() => resolveConfirmation(false)}
+        confirmLabel={confirmDialog?.confirmLabel || "Confirmer"}
+        cancelLabel="Annuler"
+        confirmDisabled={submitting}
+        variant={confirmDialog?.variant || "default"}
+      />
+
+      <AnimatePresence>
+        {relocationOpen ? (
+          <motion.div
+            className="relocation-modal-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.form
+              className="relocation-modal"
+              onSubmit={handleRelocationSubmit}
+              initial={{ opacity: 0, y: 18, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+            >
+              <div className="relocation-modal-head">
+                <div>
+                  <span className="eyebrow">Relogement</span>
+                  <h3>{relocationEligibility.label}</h3>
+                  <p>{relocationEligibility.description}</p>
                 </div>
+                <button
+                  type="button"
+                  className="relocation-modal-close"
+                  onClick={() => setRelocationOpen(false)}
+                  disabled={submitting}
+                  aria-label="Fermer"
+                >
+                  <i className="ti ti-x" aria-hidden="true" />
+                </button>
               </div>
-            </article>
-          ))}
-          {!(detail.timeline || []).length ? (
-            <EmptyStateCard
-              title="Historique encore vide"
-              description="Les prochaines transitions et interventions associees a cette fiche seront journalisees ici."
-            />
-          ) : null}
-        </div>
-      </section>
-    </div>
+
+              <div className="relocation-current-room">
+                <span>Chambre actuelle</span>
+                <strong>{detail.room?.number || "-"}</strong>
+              </div>
+
+              <div className="form-grid detail-form">
+                <FieldGroup
+                  label="Nouvelle chambre"
+                  help="Seules les chambres compatibles avec ce flux sont proposees."
+                  error={relocationValidation.errors.new_room_id}
+                  className="full-width"
+                >
+                  <AppSelect
+                    value={relocationForm.new_room_id}
+                    onChange={(event) =>
+                      setRelocationForm((current) => ({ ...current, new_room_id: event.target.value }))
+                    }
+                    name="relocation_new_room_id"
+                  >
+                    <option value="">Choisir une nouvelle chambre</option>
+                    {relocationRoomOptions.map((room) => (
+                      <option key={room.id} value={room.id}>{room.label}</option>
+                    ))}
+                  </AppSelect>
+                </FieldGroup>
+
+                <FieldGroup
+                  label="Motif"
+                  help="Le motif rend le deplacement tracable dans l'historique."
+                  error={relocationValidation.errors.reason}
+                  className="full-width"
+                >
+                  <input
+                    type="text"
+                    value={relocationForm.reason}
+                    onChange={(event) =>
+                      setRelocationForm((current) => ({ ...current, reason: event.target.value }))
+                    }
+                    placeholder="Ex: probleme technique, preference client"
+                  />
+                </FieldGroup>
+
+                <FieldGroup label="Notes internes" help="Optionnel : precision pour la reception ou la gouvernante." className="full-width">
+                  <textarea
+                    value={relocationForm.notes}
+                    onChange={(event) =>
+                      setRelocationForm((current) => ({ ...current, notes: event.target.value }))
+                    }
+                    placeholder="Notes"
+                  />
+                </FieldGroup>
+              </div>
+
+              <div className="relocation-modal-actions">
+                <button type="button" className="secondary-button" onClick={() => setRelocationOpen(false)} disabled={submitting}>
+                  Annuler
+                </button>
+                <button type="submit" className="primary-button" disabled={submitting}>
+                  {submitting ? "Relogement..." : "Confirmer le relogement"}
+                </button>
+              </div>
+            </motion.form>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </motion.div>
   );
 }

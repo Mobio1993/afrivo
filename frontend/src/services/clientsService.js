@@ -1,9 +1,15 @@
 import { fetchJson, postJson, sendJson } from "../api/client";
 
-export function listClients({ page = 1, pageSize = 5, search = "" } = {}) {
+export function listClients({ page = 1, pageSize = 5, search = "", filter = "all", includeInactive = false } = {}) {
   const params = new URLSearchParams();
   params.set("page", String(page));
   params.set("page_size", String(pageSize));
+  if (filter && filter !== "all") {
+    params.set("filter", filter);
+  }
+  if (includeInactive || filter === "archived") {
+    params.set("include_inactive", "true");
+  }
   if (search.trim()) {
     params.set("search", search.trim());
   }
@@ -30,6 +36,38 @@ export function getClientHistory(clientId, { page = 1, pageSize = 20, eventTypes
     params.set("date_to", dateTo);
   }
   return fetchJson(`/api/clients/${clientId}/history/?${params.toString()}`);
+}
+
+export function getClientStays(clientId) {
+  return fetchJson(`/api/clients/${clientId}/stays/`);
+}
+
+export function getClientPayments(clientId, { page = 1, pageSize = 12 } = {}) {
+  const params = new URLSearchParams();
+  params.set("page", String(page));
+  params.set("page_size", String(pageSize));
+  return fetchJson(`/api/clients/${clientId}/payments/?${params.toString()}`);
+}
+
+export function getClientInvoices(clientId, { page = 1, pageSize = 12 } = {}) {
+  const params = new URLSearchParams();
+  params.set("page", String(page));
+  params.set("page_size", String(pageSize));
+  return fetchJson(`/api/clients/${clientId}/invoices/?${params.toString()}`);
+}
+
+export function getClientConsumptions(clientId, { page = 1, pageSize = 12 } = {}) {
+  const params = new URLSearchParams();
+  params.set("page", String(page));
+  params.set("page_size", String(pageSize));
+  return fetchJson(`/api/clients/${clientId}/consumptions/?${params.toString()}`);
+}
+
+export function getClientSatisfaction(clientId, { page = 1, pageSize = 12 } = {}) {
+  const params = new URLSearchParams();
+  params.set("page", String(page));
+  params.set("page_size", String(pageSize));
+  return fetchJson(`/api/clients/${clientId}/satisfaction/?${params.toString()}`);
 }
 
 export function listAdminSatisfactions({
@@ -97,6 +135,10 @@ export function updateClient(clientId, payload) {
   return sendJson(`/api/clients/${clientId}/`, "PUT", payload);
 }
 
-export function deleteClient(clientId) {
-  return sendJson(`/api/clients/${clientId}/`, "DELETE");
+export function archiveClient(clientId) {
+  return postJson(`/api/clients/${clientId}/archive/`, {});
+}
+
+export function reactivateClient(clientId) {
+  return postJson(`/api/clients/${clientId}/reactivate/`, {});
 }

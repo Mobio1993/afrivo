@@ -1,7 +1,25 @@
 import { fetchJson, postJson, sendJson } from "../api/client";
 
-export function listUsers() {
-  return fetchJson("/api/users/");
+export function listUsers(filters = {}) {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "" && value !== "all") {
+      params.set(key, value);
+    }
+  });
+  const query = params.toString();
+  return fetchJson(`/api/users/${query ? `?${query}` : ""}`);
+}
+
+export function getUserStats(filters = {}) {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "" && value !== "all") {
+      params.set(key, value);
+    }
+  });
+  const query = params.toString();
+  return fetchJson(`/api/users/stats/${query ? `?${query}` : ""}`);
 }
 
 export function createUser(payload) {
@@ -14,4 +32,8 @@ export function updateUser(userId, payload) {
 
 export function deactivateUser(userId) {
   return sendJson(`/api/users/${userId}/`, "DELETE");
+}
+
+export function setUserPassword(userId, password) {
+  return postJson(`/api/users/${userId}/set_password/`, { password });
 }

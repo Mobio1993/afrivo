@@ -1,13 +1,13 @@
 from django.core.management.base import BaseCommand
 
-from apps.platform_admin.services import process_subscription_lifecycle
+from apps.licensing.services.subscription_service import SubscriptionService
 
 
 class Command(BaseCommand):
     help = "Traite les echeances d'abonnements plateforme: suspension automatique et expiration des essais."
 
     def handle(self, *args, **options):
-        result = process_subscription_lifecycle()
+        result = SubscriptionService.process_lifecycle()
         self.stdout.write(
             self.style.SUCCESS(
                 (

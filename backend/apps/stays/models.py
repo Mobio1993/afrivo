@@ -1,4 +1,5 @@
 from datetime import datetime, time
+from decimal import Decimal
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -9,7 +10,9 @@ from apps.bookings.models import Booking
 from apps.core.references import generate_unique_reference
 from apps.guests.models import Guest
 from apps.history.models import HistoryEntry
-from apps.history.services import log_history
+from apps.audit_logs.services import HotelAuditService
+
+log_history = HotelAuditService.log_history
 from apps.rooms.models import Room
 
 
@@ -101,10 +104,8 @@ class Stay(models.Model):
         verbose_name="Check-out prevu",
     )
     number_of_guests = models.PositiveIntegerField(default=1, verbose_name="Nombre d'occupants")
-    adults = models.PositiveIntegerField(default=1, verbose_name="Adultes")
-    adults_count = models.PositiveIntegerField(default=1, verbose_name="Adultes (detail)")
-    children = models.PositiveIntegerField(default=0, verbose_name="Enfants")
-    children_count = models.PositiveIntegerField(default=0, verbose_name="Enfants (detail)")
+    adults_count = models.PositiveIntegerField(default=1, verbose_name="Adultes")
+    children_count = models.PositiveIntegerField(default=0, verbose_name="Enfants")
     purpose_of_stay = models.CharField(max_length=100, blank=True, verbose_name="Motif du sejour")
     notes = models.TextField(blank=True, verbose_name="Notes")
     special_requests = models.TextField(blank=True, verbose_name="Demandes speciales")
@@ -133,7 +134,7 @@ class Stay(models.Model):
         ordering = ["-check_in_at", "-id"]
         constraints = [
             models.CheckConstraint(
-                condition=models.Q(adults__gte=1),
+                condition=models.Q(adults_count__gte=1),
                 name="stay_at_least_one_adult",
             ),
             models.CheckConstraint(
@@ -180,14 +181,9 @@ class Stay(models.Model):
             self.planned_check_in = self._default_schedule_datetime(self.booking.check_in_date, 14)
 
         if self.adults_count < 1:
-            self.adults_count = self.adults or 1
+            self.adults_count = 1
         if self.children_count < 0:
-            self.children_count = self.children or 0
-
-        if self.adults != self.adults_count:
-            self.adults = self.adults_count
-        if self.children != self.children_count:
-            self.children = self.children_count
+            self.children_count = 0
 
         computed_guests = (self.adults_count or 0) + (self.children_count or 0)
         self.number_of_guests = computed_guests if computed_guests > 0 else max(self.number_of_guests or 0, 1)
@@ -310,9 +306,76 @@ class Stay(models.Model):
     def generate_reference():
         return generate_unique_reference(Stay, "STY")
 
+    def get_checkout_payment_policy(self):
+        from apps.tenancy.models import HotelSettings
+
+        if not self.hotel_id:
+            return HotelSettings.CheckoutPaymentPolicy.BLOCKING
+        settings, _ = HotelSettings.objects.get_or_create(hotel=self.hotel)
+        return settings.checkout_payment_policy
+
+    def get_financial_totals(self):
+        from django.db.models import Q, Sum
+
+        from apps.billing.models import ClientInvoice, Payment
+        from apps.consumptions.models import ClientConsumption
+
+        invoice_totals = (
+            ClientInvoice.objects.filter(stay=self)
+            .exclude(status=ClientInvoice.Status.CANCELLED)
+            .aggregate(total=Sum("total_amount"), balance_due=Sum("balance_due"))
+        )
+        invoice_total = invoice_totals["total"] or Decimal("0.00")
+        invoice_balance_due = invoice_totals["balance_due"] or Decimal("0.00")
+
+        if invoice_total > Decimal("0.00"):
+            total_amount = invoice_total
+        else:
+            booking_estimate = self.booking.estimated_amount if self.booking_id else Decimal("0.00")
+            consumptions_total = (
+                ClientConsumption.objects.filter(stay=self)
+                .exclude(status=ClientConsumption.Status.CANCELLED)
+                .aggregate(total=Sum("total_amount"))["total"]
+                or Decimal("0.00")
+            )
+            total_amount = booking_estimate + consumptions_total
+
+        payment_filter = Q(stay=self)
+        if self.booking_id:
+            payment_filter |= Q(booking=self.booking)
+        paid_total = (
+            Payment.objects.filter(payment_filter, status=Payment.Status.PAID)
+            .distinct()
+            .aggregate(total=Sum("amount"))["total"]
+            or Decimal("0.00")
+        )
+
+        unpaid_balance = max(total_amount - paid_total, Decimal("0.00"))
+        if invoice_balance_due > unpaid_balance:
+            unpaid_balance = invoice_balance_due
+
+        return {
+            "total_amount": total_amount,
+            "total_paid": paid_total,
+            "unpaid_balance": unpaid_balance,
+        }
+
+    def validate_checkout_payment_policy(self):
+        from apps.tenancy.models import HotelSettings
+
+        policy = self.get_checkout_payment_policy()
+        if policy != HotelSettings.CheckoutPaymentPolicy.BLOCKING:
+            return
+
+        totals = self.get_financial_totals()
+        if totals["total_paid"] < totals["total_amount"]:
+            raise ValidationError("Check-out impossible : le séjour n’est pas entièrement payé.")
+
     def complete_checkout(self, actor=None):
         if self.status == self.Status.COMPLETED:
             raise ValidationError("Ce sejour est deja termine.")
+
+        self.validate_checkout_payment_policy()
 
         with transaction.atomic():
             self.status = self.Status.COMPLETED
@@ -363,6 +426,8 @@ class Stay(models.Model):
     def create_from_booking(cls, booking, room=None, notes="", actor=None):
         if booking.status != Booking.Status.CONFIRMED:
             raise ValidationError("La reservation doit etre confirmee avant le check-in.")
+        if booking.check_in_date > timezone.localdate():
+            raise ValidationError("Le check-in ne peut pas etre effectue avant la date d'arrivee prevue.")
 
         selected_room = room or booking.room
         if not selected_room:
@@ -378,9 +443,7 @@ class Stay(models.Model):
             expected_check_out_date=booking.check_out_date,
             planned_check_out=cls._default_schedule_datetime(booking.check_out_date, 12),
             number_of_guests=booking.adults + booking.children,
-            adults=booking.adults,
             adults_count=booking.adults,
-            children=booking.children,
             children_count=booking.children,
             notes=notes or booking.notes,
             checked_in_by=actor,
@@ -428,9 +491,7 @@ class Stay(models.Model):
             actual_check_in=actual_entry,
             planned_check_out=planned_check_out,
             expected_check_out_date=planned_check_out.date() if planned_check_out else None,
-            adults=adults_count,
             adults_count=adults_count,
-            children=children_count,
             children_count=children_count,
             number_of_guests=adults_count + children_count,
             purpose_of_stay=purpose_of_stay,

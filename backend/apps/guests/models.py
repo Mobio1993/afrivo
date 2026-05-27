@@ -49,7 +49,6 @@ class Guest(models.Model):
         verbose_name="Code client",
     )
     first_name = models.CharField(max_length=100, verbose_name="Prenom")
-    middle_name = models.CharField(max_length=100, blank=True, verbose_name="Autres prenoms")
     last_name = models.CharField(max_length=100, verbose_name="Nom")
     gender = models.CharField(
         max_length=20,
@@ -81,7 +80,6 @@ class Guest(models.Model):
     email = models.EmailField(blank=True, verbose_name="Email")
     address = models.CharField(max_length=255, blank=True, verbose_name="Adresse")
     city = models.CharField(max_length=100, blank=True, verbose_name="Ville")
-    country = models.CharField(max_length=100, blank=True, verbose_name="Pays")
     nationality = models.CharField(max_length=100, blank=True, verbose_name="Nationalite")
     identity_document_type = models.CharField(
         max_length=30,
@@ -112,14 +110,19 @@ class Guest(models.Model):
         ordering = ["last_name", "first_name", "-id"]
         constraints = [
             models.UniqueConstraint(
-                fields=["phone"],
+                fields=["hotel", "phone"],
                 condition=~models.Q(phone=""),
-                name="unique_guest_phone",
+                name="unique_guest_phone_per_hotel",
             ),
             models.UniqueConstraint(
-                fields=["identity_document_type", "identity_document_number"],
+                fields=["hotel", "identity_document_type", "identity_document_number"],
                 condition=~models.Q(identity_document_type="") & ~models.Q(identity_document_number=""),
-                name="unique_guest_identity_document",
+                name="unique_guest_identity_document_per_hotel",
+            ),
+            models.UniqueConstraint(
+                fields=["hotel", "email"],
+                condition=~models.Q(email=""),
+                name="unique_guest_email_per_hotel",
             ),
         ]
         indexes = [
@@ -147,15 +150,17 @@ class Guest(models.Model):
 
     @property
     def full_name(self):
-        parts = [self.first_name, self.middle_name, self.last_name]
+        parts = [self.first_name, self.last_name]
         return " ".join(part for part in parts if part).strip()
 
     @property
     def display_nationality(self):
-        return self.nationality or self.country
+        return self.nationality
 
     @property
     def client_status(self):
+        if not self.is_active:
+            return "inactive"
         if self.is_blacklisted:
             return "blacklist"
         if self.client_type == self.ClientType.VIP:

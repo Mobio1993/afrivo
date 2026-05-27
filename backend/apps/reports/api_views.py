@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from django.db.models import Count, Q, Sum
 from django.http import JsonResponse
@@ -7,15 +7,30 @@ from django.utils import timezone
 from apps.billing.models import Payment
 from apps.bookings.models import Booking, DayUse
 from apps.core.api_views import api_login_required, format_amount, module_permission_required
+from apps.iam.services.permission_service import PermissionService
+from apps.tenants.services.tenant_service import TenantService
 from apps.rooms.models import Room, RoomType
 from apps.stays.models import Stay
-from apps.tenancy.utils import filter_for_active_hotel, get_request_hotel
 from apps.tenancy.services import (
     assign_default_hotel_to_users,
     build_tenancy_readiness_payload,
     get_users_without_hotel_queryset,
 )
 from django.conf import settings
+
+from apps.reports.serializers import ReportPeriodStatsSerializer
+
+filter_for_active_hotel = TenantService.filter_for_active_hotel
+get_request_hotel = TenantService.get_request_hotel
+
+
+def require_report_action(request, action_code):
+    if PermissionService.can_perform_action(request.user, action_code, strict=True):
+        return None
+    return JsonResponse(
+        {"detail": "Permission metier rapport insuffisante.", "code": "business_permission_denied", "action": action_code},
+        status=403,
+    )
 
 
 def get_report_period(selected_period):
@@ -153,6 +168,9 @@ def reports_overview_api(request):
 @api_login_required
 @module_permission_required("reports", action="view")
 def financial_report_api(request):
+    permission_response = require_report_action(request, "reports.view_financial")
+    if permission_response:
+        return permission_response
     selected_period, config, today, period_start = get_report_period(request.GET.get("period", "today"))
     active_hotel, hotel_error = get_reports_hotel_scope(request)
     if hotel_error is not None:
@@ -288,6 +306,9 @@ def financial_report_api(request):
 @api_login_required
 @module_permission_required("reports", action="view")
 def occupancy_report_api(request):
+    permission_response = require_report_action(request, "reports.view_occupancy")
+    if permission_response:
+        return permission_response
     selected_period, config, today, period_start = get_report_period(request.GET.get("period", "today"))
     active_hotel, hotel_error = get_reports_hotel_scope(request)
     if hotel_error is not None:
@@ -380,6 +401,9 @@ def occupancy_report_api(request):
 @api_login_required
 @module_permission_required("reports", action="view")
 def day_use_report_api(request):
+    permission_response = require_report_action(request, "reports.view_dayuse")
+    if permission_response:
+        return permission_response
     selected_period, config, today, period_start = get_report_period(request.GET.get("period", "today"))
     active_hotel, hotel_error = get_reports_hotel_scope(request)
     if hotel_error is not None:
@@ -531,3 +555,275 @@ def assign_default_hotel_report_api(request):
         }
     )
     return JsonResponse(payload)
+
+
+def get_enhanced_period(request):
+    period = request.GET.get("period", "today")
+    date_from_str = request.GET.get("date_from")
+    date_to_str = request.GET.get("date_to")
+    today = timezone.localdate()
+
+    if period == "today":
+        start, end = today, today
+    elif period == "7days":
+        start, end = today - timedelta(days=6), today
+    elif period == "30days":
+        start, end = today - timedelta(days=29), today
+    elif period == "this_month":
+        start, end = today.replace(day=1), today
+    elif period == "last_month":
+        first_this = today.replace(day=1)
+        last_prev = first_this - timedelta(days=1)
+        start, end = last_prev.replace(day=1), last_prev
+    elif period == "custom" and date_from_str and date_to_str:
+        start = datetime.strptime(date_from_str, "%Y-%m-%d").date()
+        end = datetime.strptime(date_to_str, "%Y-%m-%d").date()
+    else:
+        start, end = today, today
+
+    if end < start:
+        start, end = end, start
+    return period, start, end
+
+
+def safe_delta_pct(current, previous):
+    if not previous:
+        return 0.0
+    return round(((float(current or 0) - float(previous or 0)) / float(previous)) * 100, 1)
+
+
+def decimal_to_float(value):
+    return float(value or 0)
+
+
+def payment_queryset_for_period(base_queryset, start, end):
+    return base_queryset.filter(paid_at__date__gte=start, paid_at__date__lte=end)
+
+
+def enhanced_payment_stats(base_queryset, start, end):
+    queryset = payment_queryset_for_period(base_queryset, start, end)
+    valid = queryset.filter(status=Payment.Status.PAID)
+    pending = queryset.filter(status=Payment.Status.PENDING)
+    refunded = queryset.filter(status=Payment.Status.REFUNDED)
+
+    total = decimal_to_float(valid.aggregate(total=Sum("amount"))["total"])
+    valid_count = valid.count()
+    pending_count = pending.count()
+    refunded_total = decimal_to_float(refunded.aggregate(total=Sum("amount"))["total"])
+    ticket = round(total / valid_count, 2) if valid_count else 0
+
+    modes = {}
+    method_values = [choice[0] for choice in Payment.Method.choices]
+    for method in method_values:
+        method_qs = valid.filter(method=method)
+        modes[method] = {
+            "montant": decimal_to_float(method_qs.aggregate(total=Sum("amount"))["total"]),
+            "count": method_qs.count(),
+        }
+
+    origin_filters = {
+        "reservations": Q(booking__isnull=False, stay__isnull=True, day_use__isnull=True),
+        "sejours": Q(stay__isnull=False),
+        "day_use": Q(day_use__isnull=False),
+    }
+    origins = {}
+    for key, origin_filter in origin_filters.items():
+        origin_qs = valid.filter(origin_filter)
+        origins[key] = {
+            "montant": decimal_to_float(origin_qs.aggregate(total=Sum("amount"))["total"]),
+            "count": origin_qs.count(),
+        }
+
+    return {
+        "total": total,
+        "nb_valid": valid_count,
+        "nb_wait": pending_count,
+        "rembourse": refunded_total,
+        "ticket": ticket,
+        "modes": modes,
+        "origines": origins,
+    }
+
+
+def enhanced_occupation_rate(rooms_queryset):
+    total_rooms = rooms_queryset.filter(is_active=True).count()
+    if not total_rooms:
+        return 0.0
+    occupied_rooms = rooms_queryset.filter(is_active=True, status=Room.Status.OCCUPIED).count()
+    return round((occupied_rooms / total_rooms) * 100, 1)
+
+
+def enhanced_day_use_count(day_uses_queryset, start, end):
+    return day_uses_queryset.filter(created_at__date__gte=start, created_at__date__lte=end).count()
+
+
+def build_rooms_heatmap(rooms_queryset, day_uses_queryset):
+    active_day_use_room_ids = set(
+        day_uses_queryset.filter(status__in=[DayUse.Status.IN_PROGRESS, DayUse.Status.OVERTIME])
+        .values_list("room_id", flat=True)
+    )
+    items = []
+    for room in rooms_queryset.order_by("number")[:14]:
+        if room.id in active_day_use_room_ids:
+            status = "day_use"
+        elif room.status == Room.Status.OCCUPIED:
+            status = "occupe"
+        elif room.status == Room.Status.OUT_OF_SERVICE:
+            status = "maintenance"
+        else:
+            status = "libre"
+        items.append({"numero": str(room.number), "statut": status})
+    return items
+
+
+def build_detailed_payments(base_queryset, start, end):
+    method_labels = dict(Payment.Method.choices)
+    status_labels = dict(Payment.Status.choices)
+    rows = []
+    queryset = (
+        payment_queryset_for_period(base_queryset.select_related("booking", "stay", "day_use"), start, end)
+        .order_by("-paid_at", "-id")[:50]
+    )
+    for payment in queryset:
+        relation = "Non rattache"
+        if payment.day_use_id:
+            relation = f"Day use {payment.day_use.reference}"
+        elif payment.stay_id:
+            relation = f"Sejour {payment.stay.reference}"
+        elif payment.booking_id:
+            relation = f"Reservation {payment.booking.reference}"
+        rows.append(
+            {
+                "reference": payment.reference,
+                "statut": payment.status,
+                "statut_display": status_labels.get(payment.status, payment.status),
+                "mode": payment.method,
+                "mode_display": method_labels.get(payment.method, payment.method),
+                "montant": decimal_to_float(payment.amount),
+                "relation": relation,
+                "date": timezone.localtime(payment.paid_at).strftime("%d/%m/%Y %H:%M") if payment.paid_at else "-",
+            }
+        )
+    return rows
+
+
+@api_login_required
+@module_permission_required("reports", action="view")
+def enhanced_report_stats_api(request):
+    if not any(
+        PermissionService.can_perform_action(request.user, action_code, strict=True)
+        for action_code in ("reports.view_financial", "reports.view_occupancy", "reports.view_dayuse")
+    ):
+        return JsonResponse(
+            {"detail": "Permission metier rapport insuffisante.", "code": "business_permission_denied"},
+            status=403,
+        )
+    try:
+        _period, start, end = get_enhanced_period(request)
+    except ValueError:
+        return JsonResponse({"detail": "Periode personnalisee invalide."}, status=400)
+
+    active_hotel, hotel_error = get_reports_hotel_scope(request)
+    if hotel_error is not None:
+        return hotel_error
+
+    payments_queryset = filter_for_active_hotel(Payment.objects.all(), hotel=active_hotel)
+    rooms_queryset = filter_for_active_hotel(Room.objects.all(), hotel=active_hotel)
+    day_uses_queryset = filter_for_active_hotel(DayUse.objects.all(), hotel=active_hotel)
+
+    delta_days = (end - start).days + 1
+    previous_end = start - timedelta(days=1)
+    previous_start = previous_end - timedelta(days=delta_days - 1)
+
+    current = enhanced_payment_stats(payments_queryset, start, end)
+    previous = enhanced_payment_stats(payments_queryset, previous_start, previous_end)
+    current_occ = enhanced_occupation_rate(rooms_queryset)
+    previous_occ = current_occ
+    current_day_use = enhanced_day_use_count(day_uses_queryset, start, end)
+    previous_day_use = enhanced_day_use_count(day_uses_queryset, previous_start, previous_end)
+    total_rooms = max(rooms_queryset.filter(is_active=True).count(), 1)
+
+    current_recovery = (
+        round((current["nb_valid"] / (current["nb_valid"] + current["nb_wait"])) * 100, 1)
+        if current["nb_valid"] + current["nb_wait"]
+        else 100.0
+    )
+    previous_recovery = (
+        round((previous["nb_valid"] / (previous["nb_valid"] + previous["nb_wait"])) * 100, 1)
+        if previous["nb_valid"] + previous["nb_wait"]
+        else 100.0
+    )
+    current_revpar = round(current["total"] / total_rooms, 2)
+    previous_revpar = round(previous["total"] / total_rooms, 2)
+
+    today = timezone.localdate()
+    spark_enc, spark_pay, spark_occ, spark_labels = [], [], [], []
+    for offset in range(6, -1, -1):
+        item_date = today - timedelta(days=offset)
+        daily = enhanced_payment_stats(payments_queryset, item_date, item_date)
+        spark_enc.append(daily["total"])
+        spark_pay.append(daily["nb_valid"])
+        spark_occ.append(current_occ)
+        spark_labels.append(item_date.strftime("%d/%m"))
+
+    rooms_heatmap = build_rooms_heatmap(rooms_queryset, day_uses_queryset)
+    alerts = []
+    late_payments = payments_queryset.filter(
+        status=Payment.Status.PENDING,
+        paid_at__lte=timezone.now() - timedelta(hours=24),
+    ).count()
+    if late_payments:
+        alerts.append(
+            {
+                "type": "warning",
+                "message": f"{late_payments} paiement(s) en attente depuis plus de 24h - a regulariser",
+            }
+        )
+    overdue_day_uses = day_uses_queryset.filter(
+        planned_entry_at__lt=timezone.now(),
+        check_in_at__isnull=True,
+        status__in=[DayUse.Status.PENDING_PAYMENT, DayUse.Status.READY],
+    ).count()
+    if overdue_day_uses:
+        alerts.append(
+            {
+                "type": "error",
+                "message": f"{overdue_day_uses} day use sans entree enregistree - entree prevue depassee",
+            }
+        )
+    if current_recovery == 100.0:
+        alerts.append(
+            {
+                "type": "success",
+                "message": "Taux de recouvrement : 100% - aucun paiement en attente sur la periode",
+            }
+        )
+
+    payload = {
+        "encaissements_total": current["total"],
+        "paiements_valides": current["nb_valid"],
+        "paiements_en_attente": current["nb_wait"],
+        "montant_rembourse": current["rembourse"],
+        "occupation_rate": current_occ,
+        "day_use_count": current_day_use,
+        "taux_recouvrement": current_recovery,
+        "revpar": current_revpar,
+        "ticket_moyen": current["ticket"],
+        "delta_encaissements": safe_delta_pct(current["total"], previous["total"]),
+        "delta_occupation": round(current_occ - previous_occ, 1),
+        "delta_day_use": current_day_use - previous_day_use,
+        "delta_taux_recouvrement": round(current_recovery - previous_recovery, 1),
+        "delta_revpar": safe_delta_pct(current_revpar, previous_revpar),
+        "modes_paiement": current["modes"],
+        "origine_revenus": current["origines"],
+        "sparkline_encaissements": spark_enc,
+        "sparkline_paiements": spark_pay,
+        "sparkline_occupation": spark_occ,
+        "sparkline_labels": spark_labels,
+        "rooms_heatmap": rooms_heatmap,
+        "alerts": alerts,
+        "liste_detaillee": build_detailed_payments(payments_queryset, start, end),
+    }
+    serializer = ReportPeriodStatsSerializer(data=payload)
+    serializer.is_valid(raise_exception=True)
+    return JsonResponse(serializer.validated_data)

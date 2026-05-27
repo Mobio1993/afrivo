@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { AppSelect } from "../../components/AppSelect";
-import { DateTimePicker } from "../../components/DateTimePicker";
+import { AppSelect } from "../../shared/components/AppSelect";
+import { ConfirmModal } from "../../shared/components/ConfirmModal";
+import { DateTimePicker } from "../../shared/components/DateTimePicker";
 import {
   changePlatformSubscriptionPlan,
   createPlatformSubscription,
   createPlatformSubscriptionPlan,
   listPlatformHotels,
+  listPlatformOrganizations,
   listPlatformSubscriptionPlans,
   listPlatformSubscriptions,
   renewPlatformSubscription,
@@ -16,7 +18,6 @@ import {
 } from "../../services/platformAdminService";
 import { SkeletonDashboardGrid } from "./PlatformAdminSkeletons";
 import {
-  PlatformNavTabs,
   PlatformBadge,
   PlatformKpiCard,
   PlatformEntityCell,
@@ -26,6 +27,7 @@ import {
   IconEmptyHotel,
 } from "./PlatformAdminComponents";
 import "./PlatformAdmin.css";
+import "./PlatformDangerZone.css";
 
 const STATUS_OPTIONS = [
   { value: "all",       label: "Tous les statuts" },
@@ -83,10 +85,9 @@ const EMPTY_CHANGE_PLAN_FORM = {
   note:    "",
 };
 
-/* FIX #2 — durée auto-dismiss des notifications */
 const AUTO_DISMISS_MS = 4000;
+const PLATFORM_ORGANIZATIONS_UPDATED_EVENT = "afrivo:platform-organizations-updated";
 
-/* FIX #2 — spinner SVG réutilisable */
 function Spinner() {
   return (
     <svg
@@ -121,6 +122,7 @@ function quotaStatusLabel(status) {
 export function PlatformSubscriptionsPage() {
   const [subscriptions, setSubscriptions] = useState([]);
   const [hotels, setHotels]               = useState([]);
+  const [organizations, setOrganizations] = useState([]);
   const [plans, setPlans]                 = useState([]);
   const [selectedSubscriptionId, setSelectedSubscriptionId] = useState(null);
   const [selectedPlanId, setSelectedPlanId]                 = useState(null);
@@ -133,6 +135,7 @@ export function PlatformSubscriptionsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState("");
   const [success, setSuccess] = useState("");
+  const [showCycleConfirm, setShowCycleConfirm] = useState(false);
 
   /* FIX #5 — un état de chargement par action, pas un état global partagé */
   const [submittingSubscription, setSubmittingSubscription] = useState(false);
@@ -166,18 +169,21 @@ export function PlatformSubscriptionsPage() {
     preferredSubscriptionId = selectedSubscriptionId,
     preferredPlanId = selectedPlanId,
   ) {
-    const [subscriptionsPayload, hotelsPayload, plansPayload] = await Promise.all([
+    const [subscriptionsPayload, hotelsPayload, plansPayload, organizationsPayload] = await Promise.all([
       listPlatformSubscriptions(),
       listPlatformHotels(),
       listPlatformSubscriptionPlans(),
+      listPlatformOrganizations(),
     ]);
 
     const nextSubscriptions = subscriptionsPayload.results || [];
     const nextHotels        = hotelsPayload.results || [];
     const nextPlans         = plansPayload.results || [];
+    const nextOrganizations = organizationsPayload.results || [];
     setSubscriptions(nextSubscriptions);
     setHotels(nextHotels);
     setPlans(nextPlans);
+    setOrganizations(nextOrganizations);
 
     const nextSelectedSubscriptionId =
       preferredSubscriptionId && nextSubscriptions.some((item) => item.id === preferredSubscriptionId)
@@ -201,6 +207,19 @@ export function PlatformSubscriptionsPage() {
         setLoading(false);
       });
   }, []);
+
+  useEffect(() => {
+    function handleOrganizationsUpdated() {
+      loadScreen(selectedSubscriptionId, selectedPlanId).catch((requestError) => {
+        showError(requestError.message || "Impossible de rafraichir les abonnements.");
+      });
+    }
+
+    window.addEventListener(PLATFORM_ORGANIZATIONS_UPDATED_EVENT, handleOrganizationsUpdated);
+    return () => {
+      window.removeEventListener(PLATFORM_ORGANIZATIONS_UPDATED_EVENT, handleOrganizationsUpdated);
+    };
+  }, [selectedSubscriptionId, selectedPlanId]);
 
   const filteredSubscriptions = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -320,7 +339,6 @@ export function PlatformSubscriptionsPage() {
     try {
       if (selectedSubscription) {
         await updatePlatformSubscription(selectedSubscription.id, payload);
-        /* FIX #2 — messages avec accents corrects + auto-dismiss */
         showSuccess("Abonnement mis à jour.");
         await loadScreen(selectedSubscription.id, selectedPlanId);
       } else {
@@ -384,7 +402,6 @@ export function PlatformSubscriptionsPage() {
     try {
       if (selectedPlan) {
         await updatePlatformSubscriptionPlan(selectedPlan.id, payload);
-        /* FIX #2 */
         showSuccess("Plan mis à jour.");
         await loadScreen(selectedSubscriptionId, selectedPlan.id);
       } else {
@@ -412,7 +429,6 @@ export function PlatformSubscriptionsPage() {
         duration_days: Number(renewForm.duration_days),
         note:          renewForm.note,
       });
-      /* FIX #2 */
       showSuccess("Abonnement renouvelé.");
       setRenewForm(EMPTY_RENEW_FORM);
       await loadScreen(response.subscription?.id || selectedSubscription.id, selectedPlanId);
@@ -436,7 +452,6 @@ export function PlatformSubscriptionsPage() {
         plan_id: Number(changePlanForm.plan_id),
         note:    changePlanForm.note,
       });
-      /* FIX #2 */
       const kindLabel = response.change_kind === "upgrade"
         ? "Plan mis à niveau (upgrade)."
         : response.change_kind === "downgrade"
@@ -465,10 +480,10 @@ export function PlatformSubscriptionsPage() {
       const response = await runPlatformSubscriptionLifecycle();
       await loadScreen(selectedSubscriptionId, selectedPlanId);
       const lifecycle = response.lifecycle || {};
-      /* FIX #2 */
       showSuccess(
-        `Cycle commercial exécuté : ${lifecycle.suspended_count || 0} suspension(s), ${lifecycle.expired_count || 0} essai(s) expiré(s).`,
+        `Cycle commercial exécuté : ${lifecycle.organizations_processed || 0} organisation(s), ${lifecycle.suspended_count || 0} suspension(s), ${lifecycle.expired_count || 0} essai(s) expiré(s).`,
       );
+      setShowCycleConfirm(false);
     } catch (requestError) {
       showError(requestError.message || "Impossible d'exécuter le cycle commercial.");
     } finally {
@@ -497,24 +512,16 @@ export function PlatformSubscriptionsPage() {
     submittingRenew        ||
     submittingChangePlan   ||
     submittingLifecycle;
+  const activeOrganizationCount = organizations.filter((item) => item.is_active).length;
 
   return (
     <div className="page-stack platform-admin-page">
-      <section className="hero-panel">
-        <span className="eyebrow">Plateforme</span>
-        {/* FIX #2 — accents */}
-        <h2>Abonnements, plans et quotas</h2>
-        <p>Gestion contractuelle des plans AFRIVO, des quotas et des abonnements hôtels.</p>
-      </section>
-
-      <PlatformNavTabs />
 
       <section className="platform-admin-dashboard-grid">
         {/* ── Formulaire abonnement ─────────────────────────────── */}
         <section className="list-panel">
           <div className="panel-head">
             <div>
-              {/* FIX #2 — accents */}
               <h3>{selectedSubscription ? "Mettre à jour un abonnement" : "Affecter un abonnement"}</h3>
               <p>Création ou mise à jour du contrat commercial rattaché à un hôtel.</p>
             </div>
@@ -857,24 +864,46 @@ export function PlatformSubscriptionsPage() {
         </section>
       </section>
 
+      <section className="platform-danger-zone">
+        <div className="dz-header">
+          <i className="ti ti-alert-triangle" aria-hidden="true" />
+          <div>
+            <div className="dz-title">Actions avancées</div>
+            <div className="dz-sub">
+              Ces actions affectent les abonnements actifs, en essai ou expirés de la plateforme.
+            </div>
+          </div>
+        </div>
+        <div className="dz-body">
+          <div className="dz-action">
+            <div>
+              <div className="da-name">Exécuter le cycle commercial</div>
+              <div className="da-desc">
+                Déclenche la mise à jour des statuts d'abonnement, les suspensions automatiques
+                et l'expiration des essais arrivés à terme.
+              </div>
+            </div>
+            <button
+              type="button"
+              className="dz-btn"
+              onClick={() => setShowCycleConfirm(true)}
+              disabled={submittingLifecycle}
+              aria-busy={submittingLifecycle}
+            >
+              <i className="ti ti-player-play" aria-hidden="true" />
+              {submittingLifecycle ? "Exécution..." : "Exécuter"}
+            </button>
+          </div>
+        </div>
+      </section>
+
       {/* ── Actions commerciales ────────────────────────────────── */}
       <section className="list-panel">
         <div className="panel-head">
           <div>
             <h3>Actions commerciales</h3>
-            <p>Renouvellement, upgrade ou downgrade du plan, et exécution manuelle du cycle commercial.</p>
+            <p>Renouvellement, upgrade ou downgrade du plan pour l'abonnement sélectionné.</p>
           </div>
-          {/* FIX #2 + FIX #5 — spinner isolé sur le bouton lifecycle */}
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={handleRunLifecycle}
-            disabled={submittingLifecycle}
-            aria-busy={submittingLifecycle}
-            style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
-          >
-            {submittingLifecycle ? <><Spinner />Exécution…</> : "Exécuter le cycle"}
-          </button>
         </div>
 
         {selectedSubscription ? (
@@ -904,7 +933,6 @@ export function PlatformSubscriptionsPage() {
                 onChange={handleRenewFormChange}
                 disabled={submittingRenew}
               />
-              {/* FIX #2 + FIX #5 */}
               <button
                 type="submit"
                 className="primary-button"
@@ -945,7 +973,6 @@ export function PlatformSubscriptionsPage() {
                 onChange={handleChangePlanFormChange}
                 disabled={submittingChangePlan}
               />
-              {/* FIX #2 + FIX #5 */}
               <button
                 type="submit"
                 className="primary-button"
@@ -1015,7 +1042,6 @@ export function PlatformSubscriptionsPage() {
           <section className="list-panel">
             <div className="panel-head">
               <div>
-                {/* FIX #2 — accents */}
                 <h3>Abonnements hôtels</h3>
                 <p>Lecture opérationnelle du parc contractuel AFRIVO.</p>
               </div>
@@ -1093,7 +1119,6 @@ export function PlatformSubscriptionsPage() {
             <div className="panel-head">
               <div>
                 <h3>Plans et quotas</h3>
-                {/* FIX #2 — accents */}
                 <p>Catalogue des offres AFRIVO avec capacités hôtels et utilisateurs.</p>
               </div>
             </div>
@@ -1148,7 +1173,17 @@ export function PlatformSubscriptionsPage() {
         </section>
       ) : null}
 
-      {/* FIX #2 — keyframe spinner */}
+      <ConfirmModal
+        isOpen={showCycleConfirm}
+        title="Confirmer l'exécution du cycle commercial"
+        message={`Cette action va traiter les abonnements de ${activeOrganizationCount} organisation(s) active(s). Elle est irréversible. Confirmez-vous ?`}
+        variant="danger"
+        confirmLabel={submittingLifecycle ? "Exécution..." : "Exécuter le cycle"}
+        confirmDisabled={submittingLifecycle}
+        onConfirm={handleRunLifecycle}
+        onCancel={() => setShowCycleConfirm(false)}
+      />
+
       <style>{`
         @keyframes spin {
           from { transform: rotate(0deg); }

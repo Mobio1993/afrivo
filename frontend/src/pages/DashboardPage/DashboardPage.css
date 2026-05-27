@@ -1,119 +1,742 @@
-.dashboard-page .dashboard-hero-aside,
-.dashboard-page .dashboard-kpi-grid,
-.dashboard-page .dashboard-columns,
-.dashboard-page .finance-grid,
-.dashboard-page .dashboard-chart-grid,
-.dashboard-page .operation-grid,
-.dashboard-page .dashboard-lower-grid {
-  display: grid;
-  min-width: 0;
-  min-height: 0;
+/* ═══════════════════════════════════════════════════════════════════════════
+   DashboardPage — layout "3 colonnes + bannière"
+   Préfixe : db2-   (évite tout conflit avec les classes globales)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Page container ─────────────────────────────────────────────────────────── */
+
+.db2-page {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.dashboard-page .dashboard-hero-aside {
-  gap: 18px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+/* ── Header  (#13 : .tb-s → .db2-subtitle / .pb → .db2-period-btn) ──────────── */
+
+.db2-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
-.dashboard-page .dashboard-kpi-grid {
-  gap: 18px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.dashboard-page .dashboard-columns {
-  gap: 20px;
-  align-items: start;
-  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
-}
-
-.dashboard-page .finance-grid,
-.dashboard-page .dashboard-chart-grid,
-.dashboard-page .operation-grid {
-  gap: 18px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-/* lower-grid : colonnes strictement égales, indépendant du ratio dashboard-columns */
-.dashboard-page .dashboard-lower-grid {
-  gap: 18px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: start;
-}
-
-.dashboard-page .dashboard-hero-strip {
-  position: relative;
-  z-index: 1;
-  padding-top: 6px;
-}
-
-.dashboard-page .dashboard-chip {
-  width: fit-content;
-  margin-top: 6px;
-  box-shadow: inset 0 0 0 1px rgba(15, 157, 138, 0.08);
-}
-
-.dashboard-page .dashboard-link-button {
-  min-width: 150px;
-  min-height: 48px;
-}
-
-.dashboard-page .dashboard-finance-card,
-.dashboard-page .dashboard-mini-card,
-.dashboard-page .dashboard-stack-card,
-.dashboard-page .dashboard-quick-link,
-.dashboard-page .dashboard-chart-card {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(243, 248, 255, 0.9));
-}
-
-.dashboard-page .dashboard-finance-card span {
+.db2-title {
+  font-size: 16px;
+  font-weight: 600;
   color: var(--text-main);
+  margin: 0;
+  line-height: 1.3;
 }
 
-.dashboard-page .dashboard-chart-grid {
-  gap: 18px;
+/* #13 : tb-s 11 → 12 */
+.db2-subtitle {
+  font-size: 13px;
+  color: var(--text-soft);
+  margin: 2px 0 0;
 }
 
-.dashboard-page .dashboard-alert-panel {
-  background:
-    radial-gradient(circle at top right, rgba(245, 158, 11, 0.08), transparent 24%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(250, 250, 255, 0.92));
+.db2-period-row {
+  display: flex;
+  gap: 3px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 3px;
+  flex-shrink: 0;
 }
 
-.dashboard-page .dashboard-quick-link {
-  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+/* #13 : pb font-size 10→12 / padding 4px 11→ 5px 13 */
+.db2-period-btn {
+  font-size: 13px;
+  font-weight: 500;
+  padding: 5px 13px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+  transition:
+    background 0.28s ease,
+    color 0.24s ease,
+    box-shadow 0.28s ease,
+    transform 0.22s ease;
+  white-space: nowrap;
+  font-family: inherit;
 }
 
-.dashboard-page .dashboard-quick-link:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 16px 36px rgba(31, 41, 55, 0.1);
-  border-color: rgba(59, 130, 246, 0.14);
+.db2-period-btn:hover {
+  transform: translateY(-0.5px);
 }
 
-.dashboard-page .dashboard-stack-compact .stack-metric {
-  font-size: 1.5rem;
+.db2-period-btn:active {
+  transform: translateY(0.5px) scale(0.985);
 }
 
-@media (max-width: 1180px) {
-  .dashboard-page .dashboard-kpi-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+.db2-period-btn.active {
+  background: var(--theme-primary-hover);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(var(--theme-accent-rgb), 0.25);
+  animation: db2PeriodSoftIn 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes db2PeriodSoftIn {
+  0% {
+    transform: scale(0.985);
   }
+  65% {
+    transform: scale(1.015);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
 
-  .dashboard-page .dashboard-hero-aside {
+/* ── Alert banner (#12) ──────────────────────────────────────────────────────── */
+
+/* #12 : padding 8px 14 → 10px 16 */
+.db2-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: #FAEEDA;
+  border: 0.5px solid #EF9F27;
+  border-radius: var(--radius-md);
+  padding: 10px 16px;
+  margin-bottom: 0;
+  overflow: hidden;
+}
+
+.db2-banner-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* #12 : ab-icon 14 → 16 */
+.db2-banner-icon {
+  font-size: 16px;
+  color: #854F0B;
+  flex-shrink: 0;
+}
+
+/* #12 : ab-text 11 → 12 */
+.db2-banner-text {
+  font-size: 13px;
+  color: #854F0B;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db2-banner-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* #12 : ab-btn font-size 10→11 / padding 3px 9→ 4px 11 */
+.db2-banner-btn {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(239, 159, 39, 0.15);
+  border: 0.5px solid rgba(239, 159, 39, 0.4);
+  font-size: 12px;
+  padding: 4px 11px;
+  border-radius: 8px;
+  color: #854F0B;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.db2-banner-btn:hover {
+  background: rgba(239, 159, 39, 0.28);
+}
+
+/* ── 3-column grid ───────────────────────────────────────────────────────────── */
+
+.db2-grid {
+  display: grid;
+  grid-template-columns: 220px 1fr 180px;
+  gap: 10px;
+  align-items: start;
+}
+
+.db2-col-left,
+.db2-col-center {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* #11 : rc gap 8 → 10 */
+.db2-col-right {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* ── Shared card ─────────────────────────────────────────────────────────────── */
+
+.db2-card {
+  background: var(--bg-card-strong);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+/* #7 : ch padding 8px 10→ 10px 14 / #11 : rc-head padding 8px 10→ 10px 12 → using 10px 14 */
+.db2-card-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+/* #7 : ch-t 10 → 11 / #11 : rc-head font-size 10→11 */
+.db2-card-ttl {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-soft);
+}
+
+/* ── LEFT column — rooms card ────────────────────────────────────────────────── */
+
+.db2-rooms-card {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-card-strong);
+}
+
+/* #14 : hc-head padding 11px 13→ 14px 16 */
+.db2-rooms-hd {
+  background: var(--theme-sidebar-bg);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* #14 : hc-eyebrow 9 → 10 */
+.db2-rooms-eyebrow {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.30);
+}
+
+/* #14 : hc-occ 22 → 30 */
+.db2-rooms-rate {
+  font-size: 32px;
+  font-weight: 500;
+  color: var(--theme-accent);
+  line-height: 1.1;
+  margin: 2px 0 1px;
+}
+
+/* #14 : hc-sub 10→11 / margin-top 2→4 */
+.db2-rooms-meta {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.30);
+  margin-top: 4px;
+}
+
+/* Filter tabs (#1 : .ft) */
+.db2-rooms-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+/* #1 : ft padding 5px 2→ 8px 3 / font-size (tab label) 9→10 */
+.db2-rooms-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 8px 3px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  font-family: inherit;
+}
+
+.db2-rooms-tab.active {
+  border-bottom-color: var(--theme-primary);
+  color: var(--theme-primary);
+}
+
+/* #1 : ft-n font-size 10→13 / font-weight 700→600 */
+.db2-tab-n {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* #1 : ft font-size 9→10 (tab label text) */
+.db2-tab-lbl {
+  font-size: 11px;
+  line-height: 1;
+}
+
+/* Search row (#2 : .search-wrap / .si) */
+
+/* #2 : search-wrap padding 5px 9→ 8px 12 / height 22→28 (auto) */
+.db2-rooms-search-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+/* #2 : si icon 12→14 */
+.db2-search-ico {
+  font-size: 14px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* #2 : search-input font-size 10→12 / height 22→28 */
+.db2-search-inp {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--text-main);
+  font-family: inherit;
+}
+
+.db2-search-inp::placeholder {
+  color: var(--text-muted);
+}
+
+/* Room grid (#3 : .rooms-area) */
+
+/* #3 : rooms-area gap 3→4 / max-height 130→150 / padding 7px 9→ 10px 12 */
+.db2-rooms-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 10px 12px;
+  max-height: 150px;
+  overflow-y: auto;
+  min-height: 36px;
+}
+
+.db2-rooms-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 8px 4px;
+  width: 100%;
+  text-align: center;
+}
+
+/* #3 : rs width 28→36 / height 28→36 / font-size 9→11 / border-radius 5→6 */
+.db2-room-cell {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  border: none;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.12s, transform 0.1s;
+  flex-shrink: 0;
+  padding: 0;
+  font-family: inherit;
+}
+
+.db2-room-cell:hover {
+  opacity: 0.75;
+  transform: scale(1.1);
+}
+
+/* Rooms footer (#3 : .rooms-foot / .rf-info) */
+
+/* #3 : rooms-foot padding 4px 9→ 7px 12 / rf-info font-size 9→11 */
+.db2-rooms-ft {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 12px;
+  border-top: 1px solid var(--border-soft);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.db2-legend {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+/* #3 : leg-dot width/height 6→8 */
+.db2-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.db2-legend-dot:hover {
+  transform: scale(1.25);
+}
+
+.db2-legend-dot.active {
+  box-shadow: 0 0 0 3px rgba(8, 80, 65, 0.18);
+  transform: scale(1.2);
+}
+
+/* ── CENTER column — KPI grid (#4) ───────────────────────────────────────────── */
+
+/* #4 : kpi4 gap 6→8 */
+.db2-kpi-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 8px 10px;
+}
+
+/* #4 : k padding 8px 9→ 12px 14 / border-radius 6→var(--radius-md) */
+.db2-kpi-cell {
+  background: var(--bg-soft);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* #4 : k-l font-size 9→11 / margin-bottom 3→5 */
+.db2-kpi-lbl {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 5px;
+}
+
+/* #4 : k-v font-size 14→22 */
+.db2-kpi-val {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-main);
+  line-height: 1;
+}
+
+/* #4 : exception revenus 13→18 */
+.db2-kpi-rev {
+  font-size: 19px;
+}
+
+/* #4 : k-sub — nouvelle classe */
+.db2-kpi-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+
+/* Pair grid: financial + team (#5 : .two-g) */
+
+/* #5 : two-g gap 8→10 */
+.db2-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+/* Finance badge (#7 : .ch-b) */
+
+/* #7 : ch-b padding 2px 6→ 3px 8 / font-size 9→10 */
+.db2-fin-badge {
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--theme-primary-light);
+  color: var(--theme-primary);
+  padding: 3px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+/* Metric list (#5 : .fin-rows / #9 : .res-kpi) */
+
+/* #5 : fin-rows gap 4→6 */
+.db2-metric-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+}
+
+/* #5 : fr padding 7px 9→ 10px 12 / border-radius 6→var(--radius-md) */
+/* #9 : rk padding 7px 9→ 9px 11  — using 10px 12 as common value       */
+.db2-metric-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--bg-soft);
+  border-radius: var(--radius-md);
+}
+
+/* #5 : fr-l 10→12 / #9 : rk-l 10→12 */
+.db2-m-lbl {
+  font-size: 13px;
+  color: var(--text-soft);
+  white-space: nowrap;
+}
+
+/* #5 : fr-v 11→13 / #9 : rk-v 12→14 — using 13 as common value */
+.db2-m-val {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+  white-space: nowrap;
+}
+
+/* Recent activity (#6) */
+
+.db2-act-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+}
+
+/* #6 : ar padding 6px 0→ 9px 0 */
+.db2-act-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 0;
+  background: var(--bg-soft);
+  border-radius: 6px;
+}
+
+/* #6 : at padding 2px 5→ 3px 8 / font-size 9→11 */
+.db2-act-tag {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* #6 : ar-t 11→12 */
+.db2-act-text {
+  font-size: 13px;
+  color: var(--text-main);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* #6 : ar-m 9→11 */
+.db2-act-time {
+  font-size: 12px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* #6 : ar-lk 9→11 */
+.db2-act-link {
+  font-size: 12px;
+  color: var(--text-soft);
+  text-decoration: none;
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.db2-act-link:hover {
+  color: var(--primary);
+  opacity: 1;
+}
+
+.db2-empty {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 10px;
+  text-align: center;
+  display: block;
+}
+
+/* ── RIGHT column — alerts card (#8) ─────────────────────────────────────────── */
+
+.db2-alerts-card {
+  background: rgba(250, 238, 218, 0.5);
+  border-color: rgba(239, 159, 39, 0.25);
+}
+
+.db2-alerts-hd {
+  border-bottom-color: rgba(239, 159, 39, 0.2);
+}
+
+.db2-alerts-ttl {
+  color: #854F0B;
+}
+
+/* #8 : al margin-bottom 5→7 → handled via gap */
+.db2-alerts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 6px;
+}
+
+/* #8 : al padding 7px 8→ 9px 10 / border-radius 6→var(--radius-md) */
+.db2-alert-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: #FAEEDA;
+  border-radius: var(--radius-md);
+  padding: 9px 10px;
+}
+
+/* #8 : al-n width/height 16→20 / font-size 8→10 */
+.db2-alert-badge {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #854F0B;
+  color: #FAEEDA;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.db2-alert-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* #8 : al-t 10→12 */
+.db2-alert-ttl {
+  font-size: 13px;
+  font-weight: 500;
+  color: #854F0B;
+  line-height: 1.3;
+}
+
+/* #8 : al-cta 9→11 */
+.db2-alert-lnk {
+  font-size: 12px;
+  color: #854F0B;
+  text-decoration: none;
+  opacity: 0.65;
+  font-weight: 500;
+  transition: opacity 0.15s;
+}
+
+.db2-alert-lnk:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+/* ── RIGHT column — quick actions (#10) ──────────────────────────────────────── */
+
+/* #10 : qb margin-bottom 5→6 → handled via gap */
+.db2-quick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+}
+
+/* #10 : qb padding 7px 8→ 9px 10 / border-radius 6→var(--radius-md) / font-size 10→12 */
+.db2-quick-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 0.5px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  color: var(--text-main);
+  font-size: 13px;
+  font-weight: 500;
+  background: transparent;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.db2-quick-btn:hover {
+  background: var(--bg-soft);
+  border-color: var(--border-input);
+}
+
+/* #10 : qb i font-size 13→16 */
+.db2-quick-ico {
+  font-size: 16px;
+  color: var(--theme-primary-hover);
+  flex-shrink: 0;
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────────────── */
+
+@media (max-width: 1024px) {
+  .db2-grid {
     grid-template-columns: 1fr;
   }
-}
 
-@media (max-width: 1080px) {
-  .dashboard-page .dashboard-columns,
-  .dashboard-page .dashboard-lower-grid {
-    grid-template-columns: 1fr;
+  .db2-col-left   { order: 2; }
+  .db2-col-center { order: 0; }
+  .db2-col-right  { order: 3; }
+
+  .db2-rooms-grid {
+    max-height: 200px;
   }
 }
 
-@media (max-width: 920px) {
-  .dashboard-page .finance-grid,
-  .dashboard-page .dashboard-chart-grid,
-  .dashboard-page .operation-grid {
+@media (max-width: 640px) {
+  .db2-pair {
     grid-template-columns: 1fr;
+  }
+
+  .db2-banner-text {
+    font-size: 11px;
+  }
+
+  .db2-period-btn {
+    padding: 5px 9px;
+    font-size: 11px;
   }
 }

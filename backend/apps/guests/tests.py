@@ -14,6 +14,8 @@ from apps.guests.serializers import ClientDetailSerializer, ClientSerializer
 from apps.rooms.models import Room, RoomType
 from apps.satisfaction.models import ClientSatisfaction
 from apps.stays.models import Stay
+from apps.tenancy.services import get_or_create_default_tenancy
+from apps.users.models import UserModulePermission
 
 
 User = get_user_model()
@@ -78,13 +80,11 @@ class GuestSerializerTests(TestCase):
     def test_detail_serializer_preserves_legacy_fields_and_exposes_new_fields(self):
         guest = Guest.objects.create(
             first_name="Fatou",
-            middle_name="Aminata",
             last_name="Ndiaye",
             client_type=Guest.ClientType.VIP,
             gender=Guest.Gender.FEMALE,
             phone="+221780000001",
             nationality="Senegalaise",
-            country="Senegal",
             identity_document_type=Guest.IdentityDocumentType.PASSPORT,
             identity_document_number="AA998877",
             place_of_birth="Dakar",
@@ -94,7 +94,6 @@ class GuestSerializerTests(TestCase):
         payload = ClientDetailSerializer.serialize(guest)
 
         self.assertEqual(payload["nationality"], "Senegalaise")
-        self.assertEqual(payload["country"], "Senegal")
         self.assertEqual(payload["document_type"], Guest.IdentityDocumentType.PASSPORT)
         self.assertEqual(payload["document_number"], "AA998877")
         self.assertEqual(payload["client_type"], Guest.ClientType.VIP)
@@ -135,6 +134,7 @@ class GuestSerializerTests(TestCase):
             stay=stay,
             status=Payment.Status.PAID,
             method=Payment.Method.CASH,
+            payment_type=Payment.PaymentType.ADVANCE,
             amount=50000,
             paid_at=timezone.now(),
         )
@@ -180,7 +180,7 @@ class GuestSerializerTests(TestCase):
         self.assertEqual(payload["stay_history"][0]["consumption_count"], 1)
         self.assertEqual(payload["stay_history"][0]["invoice_count"], 1)
         self.assertEqual(payload["stay_history"][0]["booking_reference"], booking.reference)
-        self.assertEqual(payload["payment_history"][0]["payment_type_code"], Payment.PaymentType.PARTIAL)
+        self.assertEqual(payload["payment_history"][0]["payment_type_code"], Payment.PaymentType.ADVANCE)
         self.assertTrue(payload["timeline_history"])
         self.assertEqual(payload["consumption_history"][0]["service"], "Bar")
         self.assertEqual(payload["invoice_history"][0]["reference"], invoice.reference)
@@ -189,15 +189,19 @@ class GuestSerializerTests(TestCase):
 
 class GuestApiTests(TestCase):
     def setUp(self):
+        self.organization, self.hotel = get_or_create_default_tenancy()
         self.user = User.objects.create_user(
             username="reception",
             password="testpass123",
             role=User.Role.RECEPTION,
+            organization=self.organization,
+            hotel=self.hotel,
         )
         self.client.force_login(self.user)
 
     def test_create_client_endpoint_keeps_contract_and_returns_warnings(self):
         Guest.objects.create(
+            hotel=self.hotel,
             first_name="Jean",
             last_name="Kouame",
             phone="+2250102030405",
@@ -231,6 +235,7 @@ class GuestApiTests(TestCase):
 
     def test_update_client_endpoint_accepts_new_fields_without_breaking_existing_payload(self):
         guest = Guest.objects.create(
+            hotel=self.hotel,
             first_name="Moussa",
             last_name="Traore",
             phone="+22370000000",
@@ -249,7 +254,6 @@ class GuestApiTests(TestCase):
                     "email": "moussa@example.com",
                     "identity_document_type": "national_id",
                     "identity_document_number": "CNI-7788",
-                    "middle_name": "Ibrahim",
                     "client_type": "corporate",
                     "place_of_birth": "Bamako",
                     "emergency_contact_name": "Awa Traore",
@@ -263,7 +267,7 @@ class GuestApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()["client"]
         self.assertEqual(payload["client_code"], guest.client_code)
-        self.assertEqual(payload["middle_name"], "Ibrahim")
+        self.assertEqual(payload["middle_name"], "")
         self.assertEqual(payload["client_type"], "corporate")
         self.assertEqual(payload["place_of_birth"], "Bamako")
         self.assertEqual(payload["emergency_contact_name"], "Awa Traore")
@@ -271,11 +275,13 @@ class GuestApiTests(TestCase):
 
     def test_clients_api_search_matches_client_code_partially(self):
         matching_guest = Guest.objects.create(
+            hotel=self.hotel,
             first_name="Kadi",
             last_name="Sow",
             phone="+221770000123",
         )
         Guest.objects.create(
+            hotel=self.hotel,
             first_name="Mariam",
             last_name="Fall",
             phone="+221770000124",
@@ -292,9 +298,67 @@ class GuestApiTests(TestCase):
         self.assertEqual(payload["results"][0]["id"], matching_guest.id)
         self.assertEqual(payload["results"][0]["client_code"], matching_guest.client_code)
 
+    def test_archive_and_reactivate_client_without_deleting_record(self):
+        admin = User.objects.create_user(
+            username="client-admin",
+            password="testpass123",
+            role=User.Role.ADMIN,
+            organization=self.organization,
+            hotel=self.hotel,
+        )
+        self.client.force_login(admin)
+        guest = Guest.objects.create(hotel=self.hotel, first_name="Awa", last_name="Sarr", phone="+221770001111")
+
+        archive_response = self.client.post(reverse("api-client-archive", kwargs={"client_id": guest.id}))
+
+        self.assertEqual(archive_response.status_code, 200)
+        guest.refresh_from_db()
+        self.assertFalse(guest.is_active)
+        self.assertTrue(Guest.objects.filter(pk=guest.pk).exists())
+
+        reactivate_response = self.client.post(reverse("api-client-reactivate", kwargs={"client_id": guest.id}))
+
+        self.assertEqual(reactivate_response.status_code, 200)
+        guest.refresh_from_db()
+        self.assertTrue(guest.is_active)
+
+    def test_client_detail_masks_financial_data_without_billing_permission(self):
+        UserModulePermission.objects.create(
+            user=self.user,
+            module_code=UserModulePermission.ModuleCode.BILLING,
+            can_view=False,
+            can_create=False,
+            can_update=False,
+            can_delete=False,
+            can_manage=False,
+        )
+        guest = Guest.objects.create(hotel=self.hotel, first_name="Nafi", last_name="Ba", phone="+221770002222")
+        Payment.objects.create(
+            hotel=self.hotel,
+            client=guest,
+            status=Payment.Status.PAID,
+            method=Payment.Method.CASH,
+            payment_type=Payment.PaymentType.ADVANCE,
+            amount=45000,
+            paid_at=timezone.now(),
+            notes="Acompte client",
+        )
+
+        response = self.client.get(reverse("api-client-detail", kwargs={"client_id": guest.id}))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertFalse(payload["permissions"]["financial"])
+        self.assertEqual(payload["payment_portfolio"], {})
+        self.assertEqual(payload["summary"][3]["value"], 0)
+
+        payments_response = self.client.get(reverse("api-client-payments", kwargs={"client_id": guest.id}))
+        self.assertEqual(payments_response.status_code, 403)
+
     def test_client_history_endpoint_returns_filtered_timeline(self):
-        guest = Guest.objects.create(first_name="Sira", last_name="Keita", phone="+22371000000")
+        guest = Guest.objects.create(hotel=self.hotel, first_name="Sira", last_name="Keita", phone="+22371000000")
         room_type = RoomType.objects.create(
+            hotel=self.hotel,
             name="Classic",
             code="CLS",
             capacity=2,
@@ -302,8 +366,9 @@ class GuestApiTests(TestCase):
             max_children=0,
             base_price_per_night=50000,
         )
-        room = Room.objects.create(number="105", room_type=room_type)
+        room = Room.objects.create(hotel=self.hotel, number="105", room_type=room_type)
         booking = Booking.objects.create(
+            hotel=self.hotel,
             guest=guest,
             room_type=room_type,
             room=room,
@@ -313,10 +378,11 @@ class GuestApiTests(TestCase):
         )
         stay = Stay.create_from_booking(booking, actor=self.user)
         Payment.objects.create(
+            hotel=self.hotel,
             client=guest,
             stay=stay,
             booking=booking,
-            payment_type=Payment.PaymentType.PARTIAL,
+            payment_type=Payment.PaymentType.ADVANCE,
             status=Payment.Status.PAID,
             method=Payment.Method.CASH,
             amount=25000,
@@ -354,6 +420,13 @@ class GuestApiTests(TestCase):
         }
     )
     def test_guests_api_can_be_switched_to_strict_mode(self):
+        self.client.force_login(
+            User.objects.create_user(
+                username="clients-no-hotel",
+                password="testpass123",
+                role=User.Role.RECEPTION,
+            )
+        )
         response = self.client.get(reverse("api-clients"))
 
         self.assertEqual(response.status_code, 403)
@@ -361,10 +434,13 @@ class GuestApiTests(TestCase):
 
 class GuestPermissionTests(TestCase):
     def setUp(self):
+        self.organization, self.hotel = get_or_create_default_tenancy()
         self.user = User.objects.create_user(
             username="housekeeper",
             password="testpass123",
             role=User.Role.HOUSEKEEPING,
+            organization=self.organization,
+            hotel=self.hotel,
         )
         self.client.force_login(self.user)
 
@@ -374,3 +450,17 @@ class GuestPermissionTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.json()["module"], "clients")
         self.assertEqual(response.json()["action"], "view")
+
+    def test_platform_admin_cannot_access_hotel_clients_module(self):
+        platform_admin = User.objects.create_user(
+            username="platform-client-blocked",
+            password="testpass123",
+            role=User.Role.ADMIN,
+            is_platform_admin=True,
+        )
+        self.client.force_login(platform_admin)
+
+        response = self.client.get(reverse("api-clients"))
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["code"], "hotel_user_required")

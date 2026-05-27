@@ -1,4 +1,4 @@
-import { hasPermission } from "./permissions.js";
+import { hasHierarchyAccess, hasPermission } from "./permissions.js";
 
 export const ROUTE_PERMISSION_RULES = [
   {
@@ -22,6 +22,16 @@ export const ROUTE_PERMISSION_RULES = [
     fallbackPath: "/dashboard",
   },
   {
+    matcher: /^\/smart-rooms$/,
+    requirements: [["rooms", "view"]],
+    fallbackPath: "/dashboard",
+  },
+  {
+    matcher: /^\/reservation-planning$/,
+    requirements: [["operations", "view"]],
+    fallbackPath: "/dashboard",
+  },
+  {
     matcher: /^\/exploitation$/,
     requirements: [["operations", "view"]],
     fallbackPath: "/dashboard",
@@ -32,13 +42,53 @@ export const ROUTE_PERMISSION_RULES = [
     fallbackPath: "/dashboard",
   },
   {
+    matcher: /^\/day-use$/,
+    requirements: [["operations", "view"]],
+    fallbackPath: "/dashboard",
+  },
+  {
+    matcher: /^\/billing(?:\/.+)?$/,
+    requirements: [["billing", "view"]],
+    fallbackPath: "/dashboard",
+  },
+  {
+    matcher: /^\/payments(?:\/.+)?$/,
+    requirements: [["payments", "view"]],
+    fallbackPath: "/dashboard",
+  },
+  {
     matcher: /^\/reports$/,
     requirements: [["reports", "view"]],
     fallbackPath: "/dashboard",
   },
   {
+    matcher: /^\/history\/activity-logs$/,
+    requirements: [["history", "view"]],
+    fallbackPath: "/dashboard",
+  },
+  {
+    matcher: /^\/account\/security$/,
+    requirements: [],
+    fallbackPath: "/dashboard",
+  },
+  {
     matcher: /^\/users$/,
     requirements: [["users", "view"]],
+    fallbackPath: "/dashboard",
+  },
+  {
+    matcher: /^\/admin\/utilisateurs$/,
+    requirements: [["users", "view"]],
+    fallbackPath: "/dashboard",
+  },
+  {
+    matcher: /^\/settings$/,
+    requirements: [["settings", "view"]],
+    fallbackPath: "/dashboard",
+  },
+  {
+    matcher: /^\/pos-restaurant(?:\/.*)?$/,
+    requirements: [],
     fallbackPath: "/dashboard",
   },
   {
@@ -57,6 +107,16 @@ export const ROUTE_PERMISSION_RULES = [
     fallbackPath: "/platform",
   },
   {
+    matcher: /^\/platform\/modules$/,
+    requirements: [["platform_modules", "view"]],
+    fallbackPath: "/platform",
+  },
+  {
+    matcher: /^\/platform\/licenses$/,
+    requirements: [["platform_licenses", "view"]],
+    fallbackPath: "/platform",
+  },
+  {
     matcher: /^\/platform\/subscriptions$/,
     requirements: [["platform_subscriptions", "view"]],
     fallbackPath: "/platform",
@@ -70,6 +130,90 @@ export const ROUTE_PERMISSION_RULES = [
     matcher: /^\/platform\/security$/,
     requirements: [["platform_security", "view"]],
     fallbackPath: "/platform",
+  },
+  {
+    matcher: /^\/super-root$/,
+    hierarchy: "super-root",
+    requirements: [["platform_security", "view"]],
+    fallbackPath: "/platform",
+  },
+  {
+    matcher: /^\/super-root\/dashboard$/,
+    hierarchy: "super-root",
+    requirements: [["platform_security", "view"]],
+    fallbackPath: "/platform",
+  },
+  {
+    matcher: /^\/super-root\/platforms$/,
+    hierarchy: "super-root",
+    requirements: [["platform_security", "view"]],
+    fallbackPath: "/super-root/dashboard",
+  },
+  {
+    matcher: /^\/super-root\/organizations$/,
+    hierarchy: "super-root",
+    requirements: [["platform_organizations", "view"]],
+    fallbackPath: "/super-root/dashboard",
+  },
+  {
+    matcher: /^\/super-root\/hotels(?:\/\d+(?:\/(?:modules|security|billing|monitoring|audit))?)?$/,
+    hierarchy: "super-root",
+    requirements: [["platform_hotels", "view"]],
+    fallbackPath: "/super-root/dashboard",
+  },
+  {
+    matcher: /^\/super-root\/modules$/,
+    hierarchy: "super-root",
+    requirements: [["platform_modules", "view"]],
+    fallbackPath: "/super-root/dashboard",
+  },
+  {
+    matcher: /^\/super-root\/licenses$/,
+    hierarchy: "super-root",
+    requirements: [["platform_licenses", "view"]],
+    fallbackPath: "/super-root/dashboard",
+  },
+  {
+    matcher: /^\/super-root\/users$/,
+    hierarchy: "super-root",
+    requirements: [["platform_users", "view"]],
+    fallbackPath: "/super-root/dashboard",
+  },
+  {
+    matcher: /^\/super-root\/(?:roles-permissions|roles|permissions)$/,
+    hierarchy: "super-root",
+    requirements: [["platform_users", "view"]],
+    fallbackPath: "/super-root/dashboard",
+  },
+  {
+    matcher: /^\/super-root\/(?:audit-logs|security|security-alerts|settings|backups)$/,
+    hierarchy: "super-root",
+    requirements: [["platform_security", "view"]],
+    fallbackPath: "/super-root/dashboard",
+  },
+  {
+    matcher: /^\/super-root\/(?:monitoring|infrastructure|notifications|ai-automation|developer-center)$/,
+    hierarchy: "super-root",
+    requirements: [["platform_security", "view"]],
+    fallbackPath: "/super-root/dashboard",
+  },
+  {
+    matcher: /^\/super-root\/maintenance$/,
+    hierarchy: "super-root",
+    requirements: [["platform_security", "manage"], ["platform_security", "view"]],
+    fallbackPath: "/super-root/dashboard",
+  },
+  {
+    matcher: /^\/hotel-admin$/,
+    hierarchy: "hotel-admin",
+    requirements: [["dashboard", "view"]],
+    fallbackPath: "/dashboard",
+  },
+  {
+    matcher: /^\/hotel-admin\/dashboard$/,
+    hierarchy: "hotel-admin",
+    requirements: [["dashboard", "view"]],
+    fallbackPath: "/dashboard",
   },
 ];
 
@@ -91,6 +235,12 @@ export function getRoutePermissionRule(pathname) {
 export function canAccessPath(user, pathname) {
   const rule = getRoutePermissionRule(pathname);
   if (!rule) {
+    return false;
+  }
+  if (rule.hierarchy && !hasHierarchyAccess(user, rule.hierarchy)) {
+    return false;
+  }
+  if (!rule.requirements || rule.requirements.length === 0) {
     return true;
   }
   return rule.requirements.some(([module, action]) => hasPermission(user, module, action));
@@ -98,20 +248,48 @@ export function canAccessPath(user, pathname) {
 
 export function getFirstAllowedPath(user) {
   const preferredPaths = [
+    "/super-root/dashboard",
+    "/super-root/platforms",
+    "/super-root/hotels",
+    "/super-root/organizations",
+    "/super-root/modules",
+    "/super-root/licenses",
+    "/super-root/users",
+    "/super-root/roles-permissions",
+    "/super-root/audit-logs",
+    "/super-root/security",
+    "/super-root/settings",
+    "/super-root/maintenance",
+    "/super-root/monitoring",
+    "/super-root/infrastructure",
+    "/super-root/notifications",
+    "/super-root/ai-automation",
+    "/super-root/developer-center",
+    "/super-root/backups",
     "/dashboard",
     "/welcome",
     "/clients",
     "/rooms",
+    "/smart-rooms",
     "/exploitation",
     "/operations",
+    "/reservation-planning",
+    "/payments",
+    "/pos-restaurant/dashboard",
     "/reports",
+    "/history/activity-logs",
+    "/account/security",
     "/users",
+    "/settings",
     "/platform",
     "/platform/hotels",
     "/platform/organizations",
+    "/platform/modules",
+    "/platform/licenses",
     "/platform/subscriptions",
     "/platform/users",
     "/platform/security",
+    "/hotel-admin/dashboard",
   ];
 
   return preferredPaths.find((path) => canAccessPath(user, path)) || "/login";

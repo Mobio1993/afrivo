@@ -13,6 +13,10 @@ from apps.bookings.models import Booking, DayUse
 from apps.core.navigation import build_sidebar_links
 from apps.rooms.models import Room, RoomType
 from apps.stays.models import Stay
+from apps.tenants.services.tenant_service import TenantService
+
+filter_for_active_hotel = TenantService.filter_for_active_hotel
+get_user_hotel = TenantService.get_user_hotel
 
 
 class ReportPeriodMixin(LoginRequiredMixin):
@@ -84,6 +88,12 @@ class ReportPeriodMixin(LoginRequiredMixin):
             )
         return links
 
+    def get_active_hotel(self):
+        return get_user_hotel(self.request.user)
+
+    def hotel_scope(self, queryset):
+        return filter_for_active_hotel(queryset, hotel=self.get_active_hotel())
+
 
 class FinancialReportView(ReportPeriodMixin, TemplateView):
     template_name = "reports/financial.html"
@@ -92,15 +102,15 @@ class FinancialReportView(ReportPeriodMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         period = self.get_period_context()
         context.update(self.get_sidebar_context())
-        paid_payments = Payment.objects.filter(
+        paid_payments = self.hotel_scope(Payment.objects.all()).filter(
             status=Payment.Status.PAID,
             paid_at__date__range=(period["period_start"], period["today"]),
         )
-        refunded_payments = Payment.objects.filter(
+        refunded_payments = self.hotel_scope(Payment.objects.all()).filter(
             status=Payment.Status.REFUNDED,
             paid_at__date__range=(period["period_start"], period["today"]),
         )
-        pending_payments = Payment.objects.filter(
+        pending_payments = self.hotel_scope(Payment.objects.all()).filter(
             status=Payment.Status.PENDING,
             paid_at__date__range=(period["period_start"], period["today"]),
         )
@@ -151,7 +161,7 @@ class FinancialReportView(ReportPeriodMixin, TemplateView):
         ]
 
         recent_payments = (
-            Payment.objects.select_related("booking", "stay", "day_use")
+            self.hotel_scope(Payment.objects.select_related("booking", "stay", "day_use"))
             .filter(paid_at__date__range=(period["period_start"], period["today"]))
             .order_by("-paid_at")[:12]
         )
@@ -204,21 +214,23 @@ class OccupancyReportView(ReportPeriodMixin, TemplateView):
         period = self.get_period_context()
         context.update(self.get_sidebar_context())
 
-        total_rooms = Room.objects.count()
-        available_rooms = Room.objects.filter(status=Room.Status.AVAILABLE, is_active=True).count()
-        occupied_rooms = Room.objects.filter(status=Room.Status.OCCUPIED, is_active=True).count()
-        cleaning_rooms = Room.objects.filter(status=Room.Status.CLEANING, is_active=True).count()
-        out_of_service_rooms = Room.objects.filter(status=Room.Status.OUT_OF_SERVICE).count()
+        rooms_queryset = self.hotel_scope(Room.objects.all())
+        total_rooms = rooms_queryset.count()
+        available_rooms = rooms_queryset.filter(status=Room.Status.AVAILABLE, is_active=True).count()
+        occupied_rooms = rooms_queryset.filter(status=Room.Status.OCCUPIED, is_active=True).count()
+        cleaning_rooms = rooms_queryset.filter(status=Room.Status.CLEANING, is_active=True).count()
+        out_of_service_rooms = rooms_queryset.filter(status=Room.Status.OUT_OF_SERVICE).count()
         occupancy_rate = round((occupied_rooms / total_rooms) * 100) if total_rooms else 0
 
-        arrivals = Booking.objects.filter(
+        arrivals = self.hotel_scope(Booking.objects.all()).filter(
             check_in_date__range=(period["period_start"], period["today"]),
             status__in=[Booking.Status.PENDING, Booking.Status.CONFIRMED, Booking.Status.CHECKED_IN],
         ).count()
-        departures = Stay.objects.filter(check_out_at__date__range=(period["period_start"], period["today"])).count()
-        check_ins = Stay.objects.filter(check_in_at__date__range=(period["period_start"], period["today"])).count()
+        stays_queryset = self.hotel_scope(Stay.objects.all())
+        departures = stays_queryset.filter(check_out_at__date__range=(period["period_start"], period["today"])).count()
+        check_ins = stays_queryset.filter(check_in_at__date__range=(period["period_start"], period["today"])).count()
 
-        room_type_breakdown = RoomType.objects.annotate(
+        room_type_breakdown = self.hotel_scope(RoomType.objects.all()).annotate(
             total_rooms=Count("rooms", filter=Q(rooms__is_active=True)),
             available_count=Count(
                 "rooms",
@@ -235,7 +247,7 @@ class OccupancyReportView(ReportPeriodMixin, TemplateView):
         ).order_by("-total_rooms", "name")
 
         recent_stays = (
-            Stay.objects.select_related("guest", "room", "booking")
+            self.hotel_scope(Stay.objects.select_related("guest", "room", "booking"))
             .filter(
                 Q(check_in_at__date__range=(period["period_start"], period["today"]))
                 | Q(check_out_at__date__range=(period["period_start"], period["today"]))
@@ -281,9 +293,10 @@ class DayUseReportView(ReportPeriodMixin, TemplateView):
         period = self.get_period_context()
         context.update(self.get_sidebar_context())
 
-        created_day_uses = DayUse.objects.filter(created_at__date__range=(period["period_start"], period["today"]))
-        completed_day_uses = DayUse.objects.filter(check_out_at__date__range=(period["period_start"], period["today"]))
-        paid_day_use_payments = Payment.objects.filter(
+        day_uses_queryset = self.hotel_scope(DayUse.objects.all())
+        created_day_uses = day_uses_queryset.filter(created_at__date__range=(period["period_start"], period["today"]))
+        completed_day_uses = day_uses_queryset.filter(check_out_at__date__range=(period["period_start"], period["today"]))
+        paid_day_use_payments = self.hotel_scope(Payment.objects.all()).filter(
             status=Payment.Status.PAID,
             day_use__isnull=False,
             paid_at__date__range=(period["period_start"], period["today"]),
@@ -305,7 +318,7 @@ class DayUseReportView(ReportPeriodMixin, TemplateView):
         ]
 
         recent_day_uses = (
-            DayUse.objects.select_related("guest", "room")
+            self.hotel_scope(DayUse.objects.select_related("guest", "room"))
             .filter(created_at__date__range=(period["period_start"], period["today"]))
             .order_by("-created_at")[:12]
         )
@@ -333,7 +346,7 @@ class DayUseReportView(ReportPeriodMixin, TemplateView):
                     },
                     {
                         "label": "Day use prets",
-                        "value": DayUse.objects.filter(status=DayUse.Status.READY).count(),
+                        "value": day_uses_queryset.filter(status=DayUse.Status.READY).count(),
                         "meta": "Paiement valide avant entree",
                     },
                     {
@@ -343,10 +356,10 @@ class DayUseReportView(ReportPeriodMixin, TemplateView):
                     },
                 ],
                 "status_cards": [
-                    {"label": "Paiement attente", "value": DayUse.objects.filter(status=DayUse.Status.PENDING_PAYMENT).count()},
-                    {"label": "Prets", "value": DayUse.objects.filter(status=DayUse.Status.READY).count()},
-                    {"label": "En cours", "value": DayUse.objects.filter(status=DayUse.Status.IN_PROGRESS).count()},
-                    {"label": "Termines", "value": DayUse.objects.filter(status=DayUse.Status.COMPLETED).count()},
+                    {"label": "Paiement attente", "value": day_uses_queryset.filter(status=DayUse.Status.PENDING_PAYMENT).count()},
+                    {"label": "Prets", "value": day_uses_queryset.filter(status=DayUse.Status.READY).count()},
+                    {"label": "En cours", "value": day_uses_queryset.filter(status=DayUse.Status.IN_PROGRESS).count()},
+                    {"label": "Termines", "value": day_uses_queryset.filter(status=DayUse.Status.COMPLETED).count()},
                 ],
                 "overtime_breakdown": overtime_breakdown,
                 "recent_day_uses": recent_day_uses,
@@ -359,7 +372,7 @@ class FinancialReportExportView(ReportPeriodMixin, View):
     def get(self, request, *args, **kwargs):
         period = self.get_period_context()
         queryset = (
-            Payment.objects.select_related("booking", "stay", "day_use")
+            self.hotel_scope(Payment.objects.select_related("booking", "stay", "day_use"))
             .filter(paid_at__date__range=(period["period_start"], period["today"]))
             .order_by("-paid_at")
         )
@@ -386,7 +399,7 @@ class FinancialReportExportView(ReportPeriodMixin, View):
 class OccupancyReportExportView(ReportPeriodMixin, View):
     def get(self, request, *args, **kwargs):
         period = self.get_period_context()
-        queryset = Room.objects.select_related("room_type").order_by("number")
+        queryset = self.hotel_scope(Room.objects.select_related("room_type")).order_by("number")
         response = HttpResponse(content_type="text/csv")
         response["Content-Disposition"] = f'attachment; filename="occupancy-report-{period["selected_period"]}.csv"'
         writer = csv.writer(response)
@@ -400,7 +413,7 @@ class DayUseReportExportView(ReportPeriodMixin, View):
     def get(self, request, *args, **kwargs):
         period = self.get_period_context()
         queryset = (
-            DayUse.objects.select_related("guest", "room")
+            self.hotel_scope(DayUse.objects.select_related("guest", "room"))
             .filter(created_at__date__range=(period["period_start"], period["today"]))
             .order_by("-created_at")
         )

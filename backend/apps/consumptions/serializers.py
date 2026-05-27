@@ -2,6 +2,9 @@ from django.db import transaction
 from rest_framework import serializers
 
 from apps.consumptions.models import ClientConsumption, ClientConsumptionItem, ServiceDepartment
+from apps.tenants.services.tenant_service import TenantService
+
+validate_objects_belong_to_hotel = TenantService.validate_objects_belong_to_hotel
 
 
 class ServiceDepartmentSerializer(serializers.ModelSerializer):
@@ -138,8 +141,20 @@ class ClientConsumptionSerializer(serializers.ModelSerializer):
         room = attrs.get("room") if "room" in attrs else getattr(self.instance, "room", None)
         status = attrs.get("status") or getattr(self.instance, "status", ClientConsumption.Status.DRAFT)
         billing_reference = attrs.get("billing_reference")
+        request = self.context.get("request")
+        active_hotel = getattr(request, "active_hotel", None) if request else None
+        effective_hotel = getattr(self.instance, "hotel", None) or active_hotel
         if billing_reference is None and self.instance is not None:
             billing_reference = self.instance.billing_reference
+
+        if effective_hotel is not None:
+            validate_objects_belong_to_hotel(
+                effective_hotel,
+                client=client,
+                stay=stay,
+                reservation=reservation,
+                room=room,
+            )
 
         if stay and client and stay.guest_id != client.id:
             raise serializers.ValidationError({"stay": "Le sejour selectionne doit appartenir au meme client."})

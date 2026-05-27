@@ -1,20 +1,49 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db.models import Count, Prefetch, Q, Sum
+from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
-from apps.billing.models import ClientInvoice, ClientInvoiceItem, Payment
+from apps.billing.models import ClientInvoice, Payment
+from apps.billing.permissions import BillingPermission
+from apps.billing.selectors import (
+    build_eligible_consumptions_payload,
+    filter_eligible_consumptions_queryset,
+    filter_invoice_queryset,
+    filter_payment_queryset,
+    get_eligible_consumptions_queryset,
+    get_invoice_queryset,
+    get_invoice_summary,
+    get_payment_queryset,
+    get_payment_summary,
+)
 from apps.billing.serializers import ClientInvoiceSerializer, ClientPaymentSerializer
-from apps.consumptions.models import ClientConsumption
+from apps.billing.services import (
+    build_invoice_pdf_payload,
+    cancel_payment,
+    confirm_payment,
+    create_invoice_from_day_use,
+    create_invoice_from_stay,
+    create_invoice_payment,
+    duplicate_invoice as duplicate_client_invoice,
+    get_billing_dashboard,
+    get_client_balance,
+)
+from apps.bookings.models import DayUse
+from apps.guests.models import Guest
 from apps.history.models import HistoryEntry
-from apps.history.services import log_history
-from apps.tenancy.drf import AuthenticatedHotelPermission, HotelScopedQuerysetMixin
+from apps.audit_logs.services import HotelAuditService
+from apps.tenancy.drf import HotelScopedQuerysetMixin
+from apps.tenants.services.tenant_service import TenantService
+from apps.stays.models import Stay
+
+scope_queryset_to_hotel = TenantService.scope_queryset_to_hotel
+log_history = HotelAuditService.log_history
 
 
 class ClientInvoiceViewSet(HotelScopedQuerysetMixin, viewsets.ModelViewSet):
     serializer_class = ClientInvoiceSerializer
-    permission_classes = [AuthenticatedHotelPermission]
+    permission_classes = [BillingPermission]
     hotel_scope_module = "billing"
     permission_module = "billing"
     permission_action_map = {
@@ -22,67 +51,30 @@ class ClientInvoiceViewSet(HotelScopedQuerysetMixin, viewsets.ModelViewSet):
         "summary": "view",
         "issue_invoice": "update",
         "cancel_invoice": "update",
+        "duplicate_invoice": "create",
+        "add_payment_to_invoice": "create",
+        "create_from_stay": "create",
+        "create_from_day_use": "create",
+        "pdf_payload": "view",
+        "receipt_payload": "view",
+    }
+    business_action_map = {
+        "create": "billing.validate_invoice",
+        "update": "billing.validate_invoice",
+        "partial_update": "billing.validate_invoice",
+        "destroy": "billing.cancel_invoice",
+        "issue_invoice": "billing.issue_invoice",
+        "cancel_invoice": "billing.cancel_invoice",
+        "duplicate_invoice": "billing.validate_invoice",
+        "add_payment_to_invoice": "payments.record",
+        "create_from_stay": "billing.issue_invoice",
+        "create_from_day_use": "billing.issue_invoice",
     }
 
     def get_queryset(self):
-        queryset = (
-            ClientInvoice.objects.select_related("client", "stay", "reservation", "issued_by")
-            .prefetch_related(
-                Prefetch(
-                    "items",
-                    queryset=ClientInvoiceItem.objects.select_related(
-                        "consumption",
-                        "service_department",
-                        "room",
-                    ),
-                ),
-                Prefetch(
-                    "payments",
-                    queryset=Payment.objects.select_related(
-                        "client",
-                        "stay",
-                        "booking",
-                        "day_use",
-                        "invoice",
-                        "recorded_by",
-                    ),
-                ),
-            )
-            .order_by("-issued_at", "-id")
-        )
+        queryset = get_invoice_queryset()
         queryset = self.scope_queryset(queryset)
-
-        client_id = self.request.query_params.get("client")
-        stay_id = self.request.query_params.get("stay")
-        reservation_id = self.request.query_params.get("reservation")
-        status_value = self.request.query_params.get("status")
-        date_from = self.request.query_params.get("date_from")
-        date_to = self.request.query_params.get("date_to")
-        search = (self.request.query_params.get("search") or "").strip()
-
-        if client_id:
-            queryset = queryset.filter(client_id=client_id)
-        if stay_id:
-            queryset = queryset.filter(stay_id=stay_id)
-        if reservation_id:
-            queryset = queryset.filter(reservation_id=reservation_id)
-        if status_value:
-            queryset = queryset.filter(status=status_value)
-        if date_from:
-            queryset = queryset.filter(issued_at__date__gte=date_from)
-        if date_to:
-            queryset = queryset.filter(issued_at__date__lte=date_to)
-        if search:
-            queryset = queryset.filter(
-                Q(reference__icontains=search)
-                | Q(client__first_name__icontains=search)
-                | Q(client__last_name__icontains=search)
-                | Q(stay__reference__icontains=search)
-                | Q(reservation__reference__icontains=search)
-                | Q(items__label__icontains=search)
-            ).distinct()
-
-        return queryset
+        return filter_invoice_queryset(queryset, self.request.query_params)
 
     def perform_create(self, serializer):
         invoice = serializer.save()
@@ -145,6 +137,15 @@ class ClientInvoiceViewSet(HotelScopedQuerysetMixin, viewsets.ModelViewSet):
             invoice.issue()
         except DjangoValidationError as error:
             return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+        log_history(
+            action_type=HistoryEntry.ActionType.STATUS_UPDATED,
+            module="billing",
+            entity_type="ClientInvoice",
+            entity_reference=invoice.reference,
+            description=f"Facture {invoice.reference} emise.",
+            actor=request.user,
+            metadata={"invoice_id": invoice.id, "status": invoice.status},
+        )
         return Response(self.get_serializer(invoice).data)
 
     @action(detail=True, methods=["post"], url_path="cancel")
@@ -155,73 +156,121 @@ class ClientInvoiceViewSet(HotelScopedQuerysetMixin, viewsets.ModelViewSet):
             invoice.cancel(note=note)
         except DjangoValidationError as error:
             return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+        log_history(
+            action_type=HistoryEntry.ActionType.STATUS_UPDATED,
+            module="billing",
+            entity_type="ClientInvoice",
+            entity_reference=invoice.reference,
+            description=f"Facture {invoice.reference} annulee.",
+            actor=request.user,
+            metadata={"invoice_id": invoice.id, "status": invoice.status, "note": note},
+        )
         return Response(self.get_serializer(invoice).data)
+
+    @action(detail=True, methods=["post"], url_path="duplicate")
+    def duplicate_invoice(self, request, pk=None):
+        source = self.get_object()
+        duplicate = duplicate_client_invoice(source, request.user)
+
+        log_history(
+            action_type=HistoryEntry.ActionType.OTHER,
+            module="billing",
+            entity_type="ClientInvoice",
+            entity_reference=duplicate.reference,
+            description=f"Facture {source.reference} dupliquee en {duplicate.reference}.",
+            actor=request.user,
+            metadata={"invoice_id": duplicate.id, "source_invoice_id": source.id, "status": duplicate.status},
+        )
+        return Response(self.get_serializer(duplicate).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], url_path="add-payment")
+    def add_payment_to_invoice(self, request, pk=None):
+        invoice = self.get_object()
+        try:
+            payment = create_invoice_payment(
+                invoice,
+                request.data,
+                ClientPaymentSerializer,
+                {"request": request},
+                request.user,
+            )
+        except DjangoValidationError as error:
+            return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+        except ValueError as error:
+            return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+
+        invoice.refresh_from_db()
+        return Response(
+            {
+                "payment": ClientPaymentSerializer(payment, context={"request": request}).data,
+                "invoice": self.get_serializer(invoice).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=["get"], url_path="pdf")
+    def pdf_payload(self, request, pk=None):
+        invoice = self.get_object()
+        return Response(build_invoice_pdf_payload(invoice))
+
+    @action(detail=True, methods=["get"], url_path="receipt")
+    def receipt_payload(self, request, pk=None):
+        invoice = self.get_object()
+        payload = build_invoice_pdf_payload(invoice)
+        payload["type"] = "receipt"
+        payload["receipt"] = {
+            "reference": invoice.reference,
+            "amount_paid": str(invoice.amount_paid),
+            "balance_due": str(invoice.balance_due),
+            "status": invoice.status,
+            "status_label": invoice.get_status_display(),
+            "currency": invoice.currency,
+            "issued_at": invoice.issued_at.isoformat() if invoice.issued_at else None,
+        }
+        return Response(payload)
 
     @action(detail=False, methods=["get"], url_path="eligible-consumptions")
     def eligible_consumptions(self, request):
-        queryset = ClientConsumption.objects.select_related("client", "stay", "reservation", "room", "service_department").exclude(
-            status=ClientConsumption.Status.CANCELLED
-        )
+        queryset = get_eligible_consumptions_queryset()
         queryset = self.scope_queryset(queryset)
-        client_id = request.query_params.get("client")
-        stay_id = request.query_params.get("stay")
+        queryset = filter_eligible_consumptions_queryset(queryset, request.query_params)
+        return Response({"results": build_eligible_consumptions_payload(queryset)})
 
-        if client_id:
-            queryset = queryset.filter(client_id=client_id)
-        if stay_id:
-            queryset = queryset.filter(stay_id=stay_id)
-
-        queryset = queryset.exclude(
-            invoice_items__invoice__status__in=[
-                ClientInvoice.Status.DRAFT,
-                ClientInvoice.Status.ISSUED,
-                ClientInvoice.Status.PARTIALLY_PAID,
-                ClientInvoice.Status.PAID,
-            ]
+    @action(detail=False, methods=["post"], url_path="create-from-stay")
+    def create_from_stay(self, request):
+        stay_id = request.data.get("stay") or request.data.get("stay_id")
+        stay = get_object_or_404(
+            self.scope_queryset(Stay.objects.select_related("guest", "room", "booking", "hotel")),
+            pk=stay_id,
         )
+        try:
+            invoice = create_invoice_from_stay(stay, user=request.user)
+        except DjangoValidationError as error:
+            return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(invoice).data, status=status.HTTP_201_CREATED)
 
-        payload = [
-            {
-                "id": item.id,
-                "reference": item.reference,
-                "client_id": item.client_id,
-                "client_name": item.client.full_name,
-                "stay_id": item.stay_id,
-                "stay_reference": item.stay.reference if item.stay_id else "",
-                "service": item.service_department.name,
-                "label": item.label,
-                "total_amount": f"{item.total_amount:.2f}",
-                "consumed_at": item.service_date.isoformat() if item.service_date else "",
-            }
-            for item in queryset.order_by("-service_date", "-id")[:100]
-        ]
-        return Response({"results": payload})
+    @action(detail=False, methods=["post"], url_path="create-from-day-use")
+    def create_from_day_use(self, request):
+        day_use_id = request.data.get("day_use") or request.data.get("day_use_id")
+        day_use = get_object_or_404(
+            self.scope_queryset(DayUse.objects.select_related("guest", "room", "hotel")),
+            pk=day_use_id,
+        )
+        try:
+            invoice = create_invoice_from_day_use(day_use, user=request.user)
+        except DjangoValidationError as error:
+            return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(invoice).data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=["get"], url_path="summary")
     def summary(self, request):
-        queryset = self.filter_queryset(self.get_queryset()).exclude(status=ClientInvoice.Status.CANCELLED)
-        return Response(
-            {
-                "totals": queryset.aggregate(
-                    invoice_count=Count("id"),
-                    total_amount=Sum("total_amount"),
-                    amount_paid=Sum("amount_paid"),
-                    balance_due=Sum("balance_due"),
-                ),
-                "by_status": list(
-                    queryset.values("status").annotate(
-                        count=Count("id"),
-                        total_amount=Sum("total_amount"),
-                        balance_due=Sum("balance_due"),
-                    )
-                ),
-            }
-        )
+        queryset = self.filter_queryset(self.get_queryset())
+        return Response(get_invoice_summary(queryset))
 
 
 class ClientPaymentViewSet(HotelScopedQuerysetMixin, viewsets.ModelViewSet):
     serializer_class = ClientPaymentSerializer
-    permission_classes = [AuthenticatedHotelPermission]
+    permission_classes = [BillingPermission]
     hotel_scope_module = "billing"
     permission_module = "billing"
     permission_action_map = {
@@ -229,67 +278,19 @@ class ClientPaymentViewSet(HotelScopedQuerysetMixin, viewsets.ModelViewSet):
         "confirm_payment": "update",
         "cancel_payment": "update",
     }
+    business_action_map = {
+        "create": "payments.record",
+        "update": "payments.correct",
+        "partial_update": "payments.correct",
+        "destroy": "payments.cancel",
+        "confirm_payment": "payments.correct",
+        "cancel_payment": "payments.cancel",
+    }
 
     def get_queryset(self):
-        queryset = (
-            Payment.objects.select_related(
-                "client",
-                "stay",
-                "booking",
-                "day_use",
-                "invoice",
-                "recorded_by",
-            )
-            .order_by("-paid_at", "-id")
-        )
+        queryset = get_payment_queryset()
         queryset = self.scope_queryset(queryset)
-
-        client_id = self.request.query_params.get("client")
-        stay_id = self.request.query_params.get("stay")
-        invoice_id = self.request.query_params.get("invoice")
-        reservation_id = self.request.query_params.get("reservation") or self.request.query_params.get("booking")
-        method = self.request.query_params.get("payment_method") or self.request.query_params.get("method")
-        status_value = self.request.query_params.get("status")
-        payment_type = self.request.query_params.get("payment_type")
-        date_from = self.request.query_params.get("date_from")
-        date_to = self.request.query_params.get("date_to")
-        search = (self.request.query_params.get("search") or "").strip()
-
-        if client_id:
-            queryset = queryset.filter(client_id=client_id)
-        if stay_id:
-            queryset = queryset.filter(stay_id=stay_id)
-        if invoice_id:
-            queryset = queryset.filter(invoice_id=invoice_id)
-        if reservation_id:
-            queryset = queryset.filter(booking_id=reservation_id)
-        if method:
-            if method == "bank_transfer":
-                method = Payment.Method.TRANSFER
-            queryset = queryset.filter(method=method)
-        if status_value:
-            if status_value == "confirmed":
-                status_value = Payment.Status.PAID
-            queryset = queryset.filter(status=status_value)
-        if payment_type:
-            queryset = queryset.filter(payment_type=payment_type)
-        if date_from:
-            queryset = queryset.filter(paid_at__date__gte=date_from)
-        if date_to:
-            queryset = queryset.filter(paid_at__date__lte=date_to)
-        if search:
-            queryset = queryset.filter(
-                Q(reference__icontains=search)
-                | Q(notes__icontains=search)
-                | Q(external_reference__icontains=search)
-                | Q(client__first_name__icontains=search)
-                | Q(client__last_name__icontains=search)
-                | Q(stay__reference__icontains=search)
-                | Q(booking__reference__icontains=search)
-                | Q(invoice__reference__icontains=search)
-            )
-
-        return queryset
+        return filter_payment_queryset(queryset, self.request.query_params)
 
     def perform_create(self, serializer):
         payment = serializer.save()
@@ -331,44 +332,51 @@ class ClientPaymentViewSet(HotelScopedQuerysetMixin, viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         payment = self.get_object()
-        if payment.status not in {Payment.Status.PENDING, Payment.Status.PAID}:
-            return Response({"detail": "Ce paiement ne peut pas etre annule dans son etat actuel."}, status=400)
-        payment.status = Payment.Status.CANCELLED
-        payment.save(update_fields=["status", "updated_at"])
+        try:
+            cancel_payment(payment)
+        except DjangoValidationError as error:
+            return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["post"], url_path="confirm")
     def confirm_payment(self, request, pk=None):
         payment = self.get_object()
-        if payment.status != Payment.Status.PENDING:
-            return Response({"detail": "Seul un paiement en attente peut etre confirme."}, status=400)
-        payment.status = Payment.Status.PAID
-        if not payment.payment_type or payment.payment_type == Payment.PaymentType.ADJUSTMENT:
-            payment.payment_type = payment.infer_payment_type()
-        payment.save(update_fields=["status", "payment_type", "updated_at"])
+        try:
+            confirm_payment(payment)
+        except DjangoValidationError as error:
+            return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(payment).data)
 
     @action(detail=True, methods=["post"], url_path="cancel")
     def cancel_payment(self, request, pk=None):
         payment = self.get_object()
-        if payment.status not in {Payment.Status.PENDING, Payment.Status.PAID}:
-            return Response({"detail": "Ce paiement ne peut pas etre annule dans son etat actuel."}, status=400)
-        payment.status = Payment.Status.CANCELLED
-        payment.save(update_fields=["status", "updated_at"])
+        try:
+            cancel_payment(payment)
+        except DjangoValidationError as error:
+            return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(payment).data)
 
     @action(detail=False, methods=["get"], url_path="summary")
     def summary(self, request):
-        queryset = self.filter_queryset(self.get_queryset()).exclude(status=Payment.Status.CANCELLED)
-        return Response(
-            {
-                "totals": queryset.aggregate(
-                    payment_count=Count("id"),
-                    confirmed_amount=Sum("amount", filter=Q(status=Payment.Status.PAID)),
-                    pending_amount=Sum("amount", filter=Q(status=Payment.Status.PENDING)),
-                    refunded_amount=Sum("amount", filter=Q(status=Payment.Status.REFUNDED)),
-                ),
-                "by_method": list(queryset.values("method").annotate(count=Count("id"), total_amount=Sum("amount"))),
-                "by_type": list(queryset.values("payment_type").annotate(count=Count("id"), total_amount=Sum("amount"))),
-            }
-        )
+        queryset = self.filter_queryset(self.get_queryset())
+        return Response(get_payment_summary(queryset))
+
+
+@api_view(["GET"])
+@permission_classes([BillingPermission])
+def billing_dashboard_api(request):
+    hotel = getattr(request, "active_hotel", None)
+    if not hotel:
+        return Response({"detail": "Aucun hotel associe a ce compte."}, status=status.HTTP_403_FORBIDDEN)
+    period = request.query_params.get("period", "today")
+    return Response(get_billing_dashboard(hotel, period=period))
+
+
+@api_view(["GET"])
+@permission_classes([BillingPermission])
+def client_balance_api(request, client_id):
+    hotel = getattr(request, "active_hotel", None)
+    if not hotel:
+        return Response({"detail": "Aucun hotel associe a ce compte."}, status=status.HTTP_403_FORBIDDEN)
+    client = get_object_or_404(scope_queryset_to_hotel(Guest.objects.all(), request), pk=client_id)
+    return Response(get_client_balance(client, hotel))

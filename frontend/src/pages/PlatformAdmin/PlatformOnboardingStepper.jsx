@@ -1,7 +1,7 @@
 import { useState } from "react";
 
-import { AppSelect } from "../../components/AppSelect";
-import { DateTimePicker } from "../../components/DateTimePicker";
+import { AppSelect } from "../../shared/components/AppSelect";
+import { DateTimePicker } from "../../shared/components/DateTimePicker";
 import { slugify } from "../../utils/slugify";
 
 const STEPS = [

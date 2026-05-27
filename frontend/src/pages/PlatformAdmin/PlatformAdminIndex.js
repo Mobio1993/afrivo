@@ -4,3 +4,5 @@ export { PlatformHotelsPage } from "./PlatformHotelsPage";
 export { PlatformSubscriptionsPage } from "./PlatformSubscriptionsPage";
 export { PlatformUsersPage } from "./PlatformUsersPage";
 export { PlatformSecurityPage } from "./PlatformSecurityPage";
+export { PlatformModulesPage } from "./PlatformModulesPage";
+export { PlatformLicensesPage } from "./PlatformLicensesPage";

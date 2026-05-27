@@ -1,17 +1,21 @@
 import json
+from io import StringIO
 from datetime import timedelta
 
+from django.core.management import call_command
 from django.urls import reverse
 from django.utils import timezone
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from apps.platform_admin.models import HotelSubscription, PlatformAuditEvent, SubscriptionPlan
+from apps.platform_admin.models import HotelSubscription, PlatformAuditEvent, PlatformLicense, PlatformModule, SubscriptionPlan
 from apps.platform_admin.serializers import (
     HotelSubscriptionSerializer,
     PlatformAuditEventSerializer,
     PlatformHotelSerializer,
+    PlatformLicenseSerializer,
+    PlatformModuleSerializer,
     PlatformOrganizationSerializer,
     PlatformUserSerializer,
     SubscriptionPlanSerializer,
@@ -25,10 +29,13 @@ from apps.platform_admin.services import (
     list_platform_organizations,
     list_platform_subscriptions,
     onboard_platform_bundle,
+    platform_module_access_allowed,
     process_subscription_lifecycle,
     renew_platform_subscription,
 )
+from apps.history.models import ActivityLog
 from apps.tenancy.models import Hotel, Organization
+from apps.tenancy.utils import module_license_is_active
 
 
 User = get_user_model()
@@ -83,12 +90,13 @@ class PlatformAdminServicesTests(TestCase):
 
         self.assertEqual(payload["summary_cards"][0]["value"], Organization.objects.count())
         self.assertEqual(payload["summary_cards"][1]["value"], Hotel.objects.filter(is_active=True).count())
+        self.assertEqual(payload["summary_cards"][2]["value"], Hotel.objects.filter(is_active=False).count())
         self.assertEqual(
-            payload["summary_cards"][2]["value"],
+            payload["summary_cards"][3]["value"],
             HotelSubscription.objects.filter(status=HotelSubscription.Status.ACTIVE).count(),
         )
         self.assertEqual(
-            payload["summary_cards"][3]["value"],
+            payload["summary_cards"][4]["value"],
             User.objects.filter(is_platform_admin=True, is_active=True).count(),
         )
 
@@ -130,6 +138,71 @@ class PlatformAdminServicesTests(TestCase):
         self.assertEqual(event.target_id, self.hotel.id)
         self.assertEqual(event.target_label, str(self.hotel))
         self.assertEqual(event.metadata["source"], "test")
+
+    def test_platform_module_access_uses_org_or_hotel_license(self):
+        module = PlatformModule.objects.create(code="day-use", name="Day Use", monthly_license_price="15.00")
+        PlatformLicense.objects.create(
+            module=module,
+            organization=self.organization,
+            status=PlatformLicense.Status.ACTIVE,
+        )
+
+        self.assertTrue(
+            platform_module_access_allowed(module_code="day-use", organization_id=self.organization.id)
+        )
+        self.assertTrue(
+            platform_module_access_allowed(module_code="day-use", hotel_id=self.hotel.id)
+        )
+
+    def test_suspended_license_blocks_module_access(self):
+        module = PlatformModule.objects.create(code="billing-plus", name="Billing Plus")
+        PlatformLicense.objects.create(
+            module=module,
+            hotel=self.hotel,
+            status=PlatformLicense.Status.SUSPENDED,
+        )
+
+        self.assertFalse(platform_module_access_allowed(module_code="billing-plus", hotel_id=self.hotel.id))
+
+    def test_module_license_helper_enforces_configured_modules_only(self):
+        self.assertTrue(module_license_is_active("clients", hotel=self.hotel))
+
+        module = PlatformModule.objects.create(code="clients", name="Clients")
+        self.assertFalse(module_license_is_active("clients", hotel=self.hotel))
+
+        PlatformLicense.objects.create(
+            module=module,
+            organization=self.organization,
+            status=PlatformLicense.Status.ACTIVE,
+        )
+
+        self.assertTrue(module_license_is_active("clients", hotel=self.hotel))
+
+    def test_suspended_organization_blocks_module_license(self):
+        module = PlatformModule.objects.create(code="billing", name="Billing")
+        PlatformLicense.objects.create(
+            module=module,
+            organization=self.organization,
+            status=PlatformLicense.Status.ACTIVE,
+        )
+
+        self.organization.is_active = False
+        self.organization.save(update_fields=["is_active"])
+
+        self.assertFalse(module_license_is_active("billing", hotel=self.hotel))
+
+    def test_inactive_hotel_blocks_module_license(self):
+        module = PlatformModule.objects.create(code="payments", name="Payments")
+        PlatformLicense.objects.create(
+            module=module,
+            organization=self.organization,
+            status=PlatformLicense.Status.ACTIVE,
+        )
+
+        self.hotel.is_active = False
+        self.hotel.save(update_fields=["is_active"])
+
+        self.assertFalse(module_license_is_active("payments", hotel=self.hotel))
 
     def test_process_subscription_lifecycle_suspends_due_active_subscription(self):
         self.subscription.ends_at = timezone.now() - timedelta(days=1)
@@ -211,6 +284,28 @@ class PlatformAdminServicesTests(TestCase):
         self.assertEqual(result["admin_user"].username, "bundle-admin")
         self.assertEqual(result["subscription"].plan_id, self.plan.id)
 
+    def test_init_platform_subscriptions_command_creates_missing_contracts(self):
+        extra_organization = Organization.objects.create(name="No Sub Org", slug="no-sub-org")
+        extra_hotel = Hotel.objects.create(
+            organization=extra_organization,
+            name="No Sub Hotel",
+            code="NSH-01",
+            slug="no-sub-hotel",
+        )
+        out = StringIO()
+
+        call_command(
+            "init_platform_subscriptions",
+            plan_code="starter",
+            plan_name="Starter",
+            status=HotelSubscription.Status.ACTIVE,
+            stdout=out,
+        )
+
+        self.assertTrue(HotelSubscription.objects.filter(hotel=extra_hotel, status=HotelSubscription.Status.ACTIVE).exists())
+        self.assertEqual(HotelSubscription.objects.filter(hotel=self.hotel).count(), 1)
+        self.assertIn("abonnement(s) cree(s)", out.getvalue())
+
 
 class PlatformAdminSerializersTests(TestCase):
     def setUp(self):
@@ -291,6 +386,13 @@ class PlatformAdminSerializersTests(TestCase):
         self.assertEqual(payload["event_type"], PlatformAuditEvent.EventType.SUBSCRIPTION_CREATED)
         self.assertEqual(payload["actor_name"], self.platform_admin.username)
 
+    def test_platform_module_and_license_serializers_expose_status(self):
+        module = PlatformModule.objects.create(code="reports-pro", name="Reports Pro")
+        license_obj = PlatformLicense.objects.create(module=module, hotel=self.hotel)
+
+        self.assertEqual(PlatformModuleSerializer(module).data["code"], "reports-pro")
+        self.assertTrue(PlatformLicenseSerializer(license_obj).data["is_valid"])
+
 
 class PlatformAdminApiTests(TestCase):
     def setUp(self):
@@ -352,7 +454,125 @@ class PlatformAdminApiTests(TestCase):
         response = self.client.get(reverse("api-platform-dashboard"))
 
         self.assertEqual(response.status_code, 403)
-        self.assertEqual(response.json()["code"], "permission_denied")
+
+    def test_platform_admin_can_create_module_and_license(self):
+        self.client.force_login(self.platform_admin)
+
+        module_response = self.client.post(
+            reverse("api-platform-modules"),
+            data=json.dumps({"code": "clients-premium", "name": "Clients Premium", "monthly_license_price": "25.00"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(module_response.status_code, 201)
+        module_id = module_response.json()["module"]["id"]
+
+        license_response = self.client.post(
+            reverse("api-platform-licenses"),
+            data=json.dumps(
+                {
+                    "module_id": module_id,
+                    "organization_id": self.organization.id,
+                    "status": PlatformLicense.Status.ACTIVE,
+                    "monthly_price": "25.00",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(license_response.status_code, 201)
+        self.assertTrue(license_response.json()["license"]["is_valid"])
+
+    def test_platform_admin_cannot_reset_super_root_access(self):
+        super_root = User.objects.create_superuser(username="super-root", password="testpass123")
+        self.client.force_login(self.platform_admin)
+
+        response = self.client.post(
+            reverse("api-platform-user-reset-access", kwargs={"user_id": super_root.id}),
+            data=json.dumps({"password": "newpass123"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["code"], "user_hierarchy_denied")
+
+    def test_platform_admin_create_endpoint_creates_organization_admin(self):
+        self.client.force_login(self.platform_admin)
+
+        response = self.client.post(
+            reverse("api-platform-users"),
+            data=json.dumps(
+                {
+                    "username": "org-admin",
+                    "password": "Testpass123!",
+                    "admin_scope": "organization",
+                    "organization_id": self.organization.id,
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        user = User.objects.get(username="org-admin")
+        self.assertEqual(user.organization_id, self.organization.id)
+        self.assertIsNone(user.hotel_id)
+        self.assertFalse(user.is_platform_admin)
+
+    def test_super_admin_can_deactivate_and_activate_platform_admin(self):
+        self.client.force_login(self.platform_admin)
+        target = User.objects.create_user(
+            username="managed-platform-admin",
+            password="testpass123",
+            role=User.Role.ADMIN,
+            is_platform_admin=True,
+            platform_role=User.PlatformRole.PLATFORM_ADMIN,
+        )
+        session = target.sessions.create(refresh_token_jti="managed-platform-admin-session", is_active=True)
+
+        deactivate_response = self.client.post(reverse("api-platform-user-deactivate", kwargs={"user_id": target.id}))
+
+        self.assertEqual(deactivate_response.status_code, 200)
+        target.refresh_from_db()
+        session.refresh_from_db()
+        self.assertFalse(target.is_active)
+        self.assertFalse(session.is_active)
+        self.assertIsNotNone(session.revoked_at)
+        self.assertTrue(
+            PlatformAuditEvent.objects.filter(
+                event_type=PlatformAuditEvent.EventType.ADMIN_UPDATED,
+                target_id=target.id,
+                metadata__action="admin_deactivated",
+            ).exists()
+        )
+
+        activate_response = self.client.post(reverse("api-platform-user-activate", kwargs={"user_id": target.id}))
+
+        self.assertEqual(activate_response.status_code, 200)
+        target.refresh_from_db()
+        self.assertTrue(target.is_active)
+        self.assertTrue(
+            PlatformAuditEvent.objects.filter(
+                event_type=PlatformAuditEvent.EventType.ADMIN_UPDATED,
+                target_id=target.id,
+                metadata__action="admin_activated",
+            ).exists()
+        )
+
+    def test_super_admin_cannot_deactivate_equal_platform_admin(self):
+        peer = User.objects.create_user(
+            username="peer-super-admin-platform",
+            password="testpass123",
+            role=User.Role.ADMIN,
+            is_platform_admin=True,
+            platform_role=User.PlatformRole.SUPER_ADMIN,
+        )
+        self.client.force_login(self.platform_admin)
+
+        response = self.client.post(reverse("api-platform-user-deactivate", kwargs={"user_id": peer.id}))
+
+        self.assertEqual(response.status_code, 403)
+        peer.refresh_from_db()
+        self.assertTrue(peer.is_active)
 
     def test_platform_admin_can_view_platform_lists(self):
         self.client.force_login(self.platform_admin)
@@ -389,6 +609,39 @@ class PlatformAdminApiTests(TestCase):
         self.assertTrue(
             PlatformAuditEvent.objects.filter(event_type=PlatformAuditEvent.EventType.ORGANIZATION_CREATED).exists()
         )
+
+    def test_platform_admin_can_update_organization(self):
+        self.client.force_login(self.platform_admin)
+
+        response = self.client.patch(
+            reverse("api-platform-organization-detail", kwargs={"organization_id": self.organization.id}),
+            data=json.dumps({"name": "Updated Org", "slug": "updated-org", "status": "suspended"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.organization.refresh_from_db()
+        self.assertEqual(self.organization.name, "Updated Org")
+        self.assertEqual(self.organization.slug, "updated-org")
+        self.assertEqual(self.organization.status, Organization.Status.SUSPENDED)
+        self.assertFalse(self.organization.is_active)
+        self.assertEqual(response.json()["organization"]["status"], Organization.Status.SUSPENDED)
+        self.assertTrue(
+            PlatformAuditEvent.objects.filter(event_type=PlatformAuditEvent.EventType.ORGANIZATION_UPDATED).exists()
+        )
+
+    def test_platform_organization_update_rejects_duplicate_slug(self):
+        self.client.force_login(self.platform_admin)
+        other = Organization.objects.create(name="Other Org", slug="other-org")
+
+        response = self.client.patch(
+            reverse("api-platform-organization-detail", kwargs={"organization_id": other.id}),
+            data=json.dumps({"slug": self.organization.slug}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["code"], "validation_error")
 
     def test_platform_admin_can_create_update_suspend_and_reactivate_hotel(self):
         self.client.force_login(self.platform_admin)
@@ -505,6 +758,19 @@ class PlatformAdminApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["lifecycle"]["suspended_count"], 1)
+        self.assertEqual(response.json()["lifecycle"]["organizations_processed"], 1)
+        self.assertTrue(
+            PlatformAuditEvent.objects.filter(
+                target_type="PlatformSubscriptionLifecycle",
+                metadata__action="commercial_cycle_executed",
+            ).exists()
+        )
+        self.assertTrue(
+            ActivityLog.objects.filter(
+                module="platform_subscriptions",
+                object_type="PlatformSubscriptionLifecycle",
+            ).exists()
+        )
 
     def test_platform_admin_can_renew_subscription_endpoint(self):
         self.client.force_login(self.platform_admin)

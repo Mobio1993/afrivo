@@ -1,3 +1,6 @@
+import { useEffect, useState } from "react";
+
+import { getClientInvoices } from "../../../services/clientsService";
 import { formatAmount, formatDate, formatDateTime, normalizeValue } from "../utils";
 import { EmptyStateCard } from "./EmptyStateCard";
 
@@ -12,12 +15,34 @@ function PortfolioCard({ label, value, meta }) {
 }
 
 export function ClientInvoicesTab({ selectedClient }) {
+  const [payload, setPayload] = useState({
+    invoice_portfolio: selectedClient?.invoice_portfolio || {},
+    results: selectedClient?.invoice_history || [],
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!selectedClient?.id) return undefined;
+    setPayload({
+      invoice_portfolio: selectedClient.invoice_portfolio || {},
+      results: selectedClient.invoice_history || [],
+    });
+    setLoading(true);
+    setError("");
+    getClientInvoices(selectedClient.id)
+      .then((data) => setPayload(data))
+      .catch((requestError) => setError(requestError.message || "Impossible de charger les factures."))
+      .finally(() => setLoading(false));
+    return undefined;
+  }, [selectedClient?.id]);
+
   if (!selectedClient) {
     return null;
   }
 
-  const portfolio = selectedClient.invoice_portfolio || {};
-  const invoices = selectedClient.invoice_history || [];
+  const portfolio = payload.invoice_portfolio || {};
+  const invoices = payload.results || [];
 
   return (
     <div className="table-like clients-invoices-tab">
@@ -43,6 +68,9 @@ export function ClientInvoicesTab({ selectedClient }) {
           meta="Factures deja soldees integralement."
         />
       </div>
+
+      {loading ? <div className="status-box">Chargement des factures...</div> : null}
+      {error ? <div className="alert-box">{error}</div> : null}
 
       {invoices.length ? (
         <div className="table-like">

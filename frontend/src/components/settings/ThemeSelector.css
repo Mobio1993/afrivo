@@ -1,0 +1,171 @@
+.ts-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ts-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ts-label {
+  color: var(--text-main);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.ts-current {
+  padding: 3px 9px;
+  border: 0.5px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--bg-soft);
+  color: var(--text-soft);
+  font-size: 11px;
+}
+
+.ts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ts-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1.5px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  cursor: pointer;
+  font-family: var(--font-family);
+  text-align: left;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    transform 0.15s ease;
+}
+
+.ts-card:hover {
+  border-color: var(--border-input);
+  background: var(--bg-soft);
+  transform: translateY(-1px);
+}
+
+.ts-card-active {
+  border-color: var(--theme-primary) !important;
+  background: var(--theme-primary-light) !important;
+}
+
+.ts-preview {
+  display: flex;
+  height: 72px;
+  overflow: hidden;
+  border: 0.5px solid rgba(0, 0, 0, 0.08);
+  border-radius: 6px;
+}
+
+.ts-prev-sidebar {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 3px;
+  width: 28px;
+  padding: 6px 4px;
+}
+
+.ts-prev-dot {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  margin-bottom: 4px;
+  border-radius: 3px;
+}
+
+.ts-prev-lines {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ts-prev-line {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.ts-prev-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 7px;
+}
+
+.ts-prev-title {
+  width: 60%;
+  height: 6px;
+  margin-bottom: 2px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.ts-prev-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.ts-prev-kp {
+  height: 16px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.ts-prev-btn {
+  width: 40%;
+  height: 10px;
+  margin-top: auto;
+  border-radius: 3px;
+  opacity: 0.8;
+}
+
+.ts-info {
+  padding: 0 2px;
+}
+
+.ts-name {
+  margin-bottom: 2px;
+  color: var(--text-main);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.ts-desc {
+  color: var(--text-soft);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.ts-card-active .ts-name {
+  color: var(--theme-primary);
+}
+
+.ts-check {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  color: var(--theme-primary);
+  font-size: 16px;
+}
+
+@media (max-width: 720px) {
+  .ts-grid {
+    grid-template-columns: 1fr;
+  }
+}

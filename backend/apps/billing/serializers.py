@@ -2,6 +2,9 @@ from django.db import transaction
 from rest_framework import serializers
 
 from apps.billing.models import ClientInvoice, ClientInvoiceItem, Payment
+from apps.tenants.services.tenant_service import TenantService
+
+validate_objects_belong_to_hotel = TenantService.validate_objects_belong_to_hotel
 
 
 PAYMENT_METHOD_INPUT_ALIASES = {
@@ -162,9 +165,31 @@ class ClientPaymentSerializer(serializers.ModelSerializer):
         day_use = attrs.get("day_use") if "day_use" in attrs else getattr(instance, "day_use", None)
         payment_type = attrs.get("payment_type") if "payment_type" in attrs else getattr(instance, "payment_type", None)
         amount = attrs.get("amount") if "amount" in attrs else getattr(instance, "amount", None)
+        hotel = attrs.get("hotel") if "hotel" in attrs else getattr(instance, "hotel", None)
+        request = self.context.get("request")
+        active_hotel = getattr(request, "active_hotel", None) if request else None
 
         if amount is not None and amount <= 0:
             raise serializers.ValidationError({"amount": "Le montant doit etre strictement positif."})
+
+        if payment_type == Payment.PaymentType.INVOICE_PAYMENT and not invoice:
+            raise serializers.ValidationError({"invoice": "Une facture est obligatoire pour un paiement de facture."})
+
+        if not invoice and payment_type in Payment.LEGACY_PAYMENT_TYPES:
+            raise serializers.ValidationError({"payment_type": "Ce type de paiement doit etre rattache a une facture."})
+
+        if not invoice and payment_type not in Payment.CONTROLLED_STANDALONE_TYPES and payment_type not in Payment.LEGACY_PAYMENT_TYPES:
+            raise serializers.ValidationError(
+                {"payment_type": "Paiement sans facture autorise uniquement pour une avance, caution, recharge credit, prepaiement day use ou remboursement."}
+            )
+
+        if not invoice and payment_type in Payment.CONTROLLED_STANDALONE_TYPES:
+            external_reference = attrs.get("external_reference") if "external_reference" in attrs else getattr(instance, "external_reference", "")
+            notes = attrs.get("notes") if "notes" in attrs else getattr(instance, "notes", "")
+            if not (str(notes or "").strip() or str(external_reference or "").strip() or booking or stay or day_use):
+                raise serializers.ValidationError(
+                    {"notes": "Un paiement sans facture doit avoir un motif, une reference externe ou un rattachement metier."}
+                )
 
         if client and stay and stay.guest_id != client.id:
             raise serializers.ValidationError({"stay": "Le sejour selectionne doit appartenir au meme client."})
@@ -174,6 +199,26 @@ class ClientPaymentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"invoice": "La facture selectionnee doit appartenir au meme client."})
         if client and day_use and day_use.guest_id != client.id:
             raise serializers.ValidationError({"day_use": "Le day use selectionne doit appartenir au meme client."})
+
+        effective_hotel = hotel or active_hotel
+        validate_objects_belong_to_hotel(
+            effective_hotel,
+            client=client,
+            stay=stay,
+            booking=booking,
+            invoice=invoice,
+            day_use=day_use,
+        )
+        if effective_hotel and invoice and invoice.hotel_id and invoice.hotel_id != effective_hotel.id:
+            raise serializers.ValidationError({"invoice": "La facture selectionnee doit appartenir au meme hotel que le paiement."})
+        if effective_hotel and client and client.hotel_id and client.hotel_id != effective_hotel.id:
+            raise serializers.ValidationError({"client": "Le client selectionne doit appartenir au meme hotel que le paiement."})
+        if effective_hotel and stay and stay.hotel_id and stay.hotel_id != effective_hotel.id:
+            raise serializers.ValidationError({"stay": "Le sejour selectionne doit appartenir au meme hotel que le paiement."})
+        if effective_hotel and booking and booking.hotel_id and booking.hotel_id != effective_hotel.id:
+            raise serializers.ValidationError({"booking": "La reservation selectionnee doit appartenir au meme hotel que le paiement."})
+        if effective_hotel and day_use and day_use.hotel_id and day_use.hotel_id != effective_hotel.id:
+            raise serializers.ValidationError({"day_use": "Le day use selectionne doit appartenir au meme hotel que le paiement."})
 
         if payment_type == Payment.PaymentType.REFUND and (attrs.get("status") or getattr(instance, "status", None)) != Payment.Status.REFUNDED:
             raise serializers.ValidationError({"payment_type": "Un type remboursement doit porter le statut rembourse."})
@@ -187,6 +232,8 @@ class ClientPaymentSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if request and request.user and request.user.is_authenticated:
             validated_data.setdefault("recorded_by", request.user)
+        if request and getattr(request, "active_hotel", None):
+            validated_data.setdefault("hotel", request.active_hotel)
         return Payment.objects.create(**validated_data)
 
     def update(self, instance, validated_data):
@@ -208,6 +255,7 @@ class ClientInvoiceSerializer(serializers.ModelSerializer):
     client_name = serializers.CharField(source="client.full_name", read_only=True)
     stay_reference = serializers.CharField(source="stay.reference", read_only=True)
     reservation_reference = serializers.CharField(source="reservation.reference", read_only=True)
+    day_use_reference = serializers.CharField(source="day_use.reference", read_only=True)
     issued_by_name = serializers.SerializerMethodField()
     invoice_number = serializers.CharField(source="reference", read_only=True)
 
@@ -223,6 +271,8 @@ class ClientInvoiceSerializer(serializers.ModelSerializer):
             "stay_reference",
             "reservation",
             "reservation_reference",
+            "day_use",
+            "day_use_reference",
             "issued_by",
             "issued_by_name",
             "status",
@@ -265,8 +315,20 @@ class ClientInvoiceSerializer(serializers.ModelSerializer):
         client = attrs.get("client") or getattr(self.instance, "client", None)
         stay = attrs.get("stay") if "stay" in attrs else getattr(self.instance, "stay", None)
         reservation = attrs.get("reservation") if "reservation" in attrs else getattr(self.instance, "reservation", None)
+        day_use = attrs.get("day_use") if "day_use" in attrs else getattr(self.instance, "day_use", None)
         due_date = attrs.get("due_date") if "due_date" in attrs else getattr(self.instance, "due_date", None)
         issued_at = attrs.get("issued_at") if "issued_at" in attrs else getattr(self.instance, "issued_at", None)
+        request = self.context.get("request")
+        active_hotel = getattr(request, "active_hotel", None) if request else None
+        effective_hotel = getattr(self.instance, "hotel", None) or active_hotel
+
+        validate_objects_belong_to_hotel(
+            effective_hotel,
+            client=client,
+            stay=stay,
+            reservation=reservation,
+            day_use=day_use,
+        )
 
         if stay and client and stay.guest_id != client.id:
             raise serializers.ValidationError({"stay": "Le sejour selectionne doit appartenir au meme client."})
@@ -274,8 +336,14 @@ class ClientInvoiceSerializer(serializers.ModelSerializer):
         if reservation and client and reservation.guest_id != client.id:
             raise serializers.ValidationError({"reservation": "La reservation selectionnee doit appartenir au meme client."})
 
+        if day_use and client and day_use.guest_id != client.id:
+            raise serializers.ValidationError({"day_use": "Le day use selectionne doit appartenir au meme client."})
+
         if stay and reservation and stay.booking_id and stay.booking_id != reservation.id:
             raise serializers.ValidationError({"reservation": "La reservation ne correspond pas au sejour selectionne."})
+
+        if day_use and (stay or reservation):
+            raise serializers.ValidationError({"day_use": "Une facture day use ne doit pas etre rattachee a un sejour ou une reservation."})
 
         if due_date and issued_at and due_date < issued_at.date():
             raise serializers.ValidationError({"due_date": "L'echeance ne peut pas etre anterieure a la date d'emission."})

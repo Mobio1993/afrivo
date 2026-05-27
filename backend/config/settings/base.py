@@ -1,9 +1,13 @@
 import os
+import dj_database_url
 from pathlib import Path
+
+from django.core.exceptions import ImproperlyConfigured
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 ENV_FILE = BASE_DIR / ".env"
+
 
 
 def load_env_file(file_path):
@@ -38,8 +42,13 @@ def env_list(name, default=""):
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
-SECRET_KEY = env("DJANGO_SECRET_KEY", "unsafe-development-key")
-DEBUG = env_bool("DJANGO_DEBUG", False)
+DEBUG = env_bool("DJANGO_DEBUG", env("DJANGO_SETTINGS_MODULE", "").endswith(".local"))
+SECRET_KEY = env("DJANGO_SECRET_KEY")
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = "unsafe-development-key"
+    else:
+        raise ImproperlyConfigured("DJANGO_SECRET_KEY est obligatoire en production.")
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost")
 CORS_ALLOWED_ORIGINS = env_list(
     "CORS_ALLOWED_ORIGINS",
@@ -51,27 +60,40 @@ CSRF_TRUSTED_ORIGINS = env_list(
 )
 CORS_ALLOW_CREDENTIALS = True
 FRONTEND_APP_URL = env("FRONTEND_APP_URL", "http://127.0.0.1:5173")
-JWT_SECRET_KEY = env("JWT_SECRET_KEY", SECRET_KEY)
+JWT_SECRET_KEY = env("JWT_SECRET_KEY")
+if not JWT_SECRET_KEY:
+    if DEBUG:
+        JWT_SECRET_KEY = SECRET_KEY
+    else:
+        raise ImproperlyConfigured("JWT_SECRET_KEY est obligatoire en production.")
 JWT_ACCESS_LIFETIME_SECONDS = int(env("JWT_ACCESS_LIFETIME_SECONDS", "900"))
 JWT_REFRESH_LIFETIME_SECONDS = int(env("JWT_REFRESH_LIFETIME_SECONDS", "604800"))
 JWT_ACCESS_COOKIE_NAME = env("JWT_ACCESS_COOKIE_NAME", "access_token")
 JWT_REFRESH_COOKIE_NAME = env("JWT_REFRESH_COOKIE_NAME", "refresh_token")
 JWT_COOKIE_SECURE = env_bool("JWT_COOKIE_SECURE", not DEBUG)
 JWT_COOKIE_SAMESITE = env("JWT_COOKIE_SAMESITE", "Lax")
+SUPER_ROOT_SESSION_AGE_SECONDS = int(env("SUPER_ROOT_SESSION_AGE_SECONDS", "1800"))
 AUTH_LOGIN_THROTTLE_ATTEMPTS = int(env("AUTH_LOGIN_THROTTLE_ATTEMPTS", "5"))
 AUTH_LOGIN_THROTTLE_WINDOW_SECONDS = int(env("AUTH_LOGIN_THROTTLE_WINDOW_SECONDS", "900"))
+AUTH_ENFORCE_SENSITIVE_2FA = env_bool("AUTH_ENFORCE_SENSITIVE_2FA", False)
+SESSION_COOKIE_SECURE = env_bool("SESSION_COOKIE_SECURE", not DEBUG)
+CSRF_COOKIE_SECURE = env_bool("CSRF_COOKIE_SECURE", not DEBUG)
+SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", False)
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SATISFACTION_CLIENT_APP_KEY = env("SATISFACTION_CLIENT_APP_KEY", "afrivo-satisfaction-dev-key")
-TENANCY_STRICT_BILLING = env_bool("TENANCY_STRICT_BILLING", False)
-TENANCY_STRICT_CONSUMPTIONS = env_bool("TENANCY_STRICT_CONSUMPTIONS", False)
-TENANCY_STRICT_SATISFACTION = env_bool("TENANCY_STRICT_SATISFACTION", False)
-TENANCY_STRICT_GUESTS = env_bool("TENANCY_STRICT_GUESTS", False)
-TENANCY_STRICT_OPERATIONS = env_bool("TENANCY_STRICT_OPERATIONS", False)
-TENANCY_STRICT_HISTORY = env_bool("TENANCY_STRICT_HISTORY", False)
-TENANCY_STRICT_ROOMS = env_bool("TENANCY_STRICT_ROOMS", False)
-TENANCY_STRICT_BOOKINGS = env_bool("TENANCY_STRICT_BOOKINGS", False)
+TENANCY_STRICT_BILLING = env_bool("TENANCY_STRICT_BILLING", True)
+TENANCY_STRICT_PAYMENTS = env_bool("TENANCY_STRICT_PAYMENTS", True)
+TENANCY_STRICT_CONSUMPTIONS = env_bool("TENANCY_STRICT_CONSUMPTIONS", True)
+TENANCY_STRICT_SATISFACTION = env_bool("TENANCY_STRICT_SATISFACTION", True)
+TENANCY_STRICT_GUESTS = env_bool("TENANCY_STRICT_GUESTS", True)
+TENANCY_STRICT_OPERATIONS = env_bool("TENANCY_STRICT_OPERATIONS", True)
+TENANCY_STRICT_HISTORY = env_bool("TENANCY_STRICT_HISTORY", True)
+TENANCY_STRICT_ROOMS = env_bool("TENANCY_STRICT_ROOMS", True)
+TENANCY_STRICT_BOOKINGS = env_bool("TENANCY_STRICT_BOOKINGS", True)
 SUBSCRIPTION_ENFORCEMENT_ENABLED = env_bool("SUBSCRIPTION_ENFORCEMENT_ENABLED", False)
 TENANCY_STRICT_MODULES = {
     "billing": TENANCY_STRICT_BILLING,
+    "payments": TENANCY_STRICT_PAYMENTS,
     "consumptions": TENANCY_STRICT_CONSUMPTIONS,
     "satisfaction": TENANCY_STRICT_SATISFACTION,
     "guests": TENANCY_STRICT_GUESTS,
@@ -87,22 +109,32 @@ INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
+    "django.contrib.postgres",
     "django.contrib.staticfiles",
     "corsheaders",
     "rest_framework",
     "apps.core",
+    "apps.iam",
+    "apps.tenants",
+    "apps.licensing",
+    "apps.audit_logs",
+    "apps.super_root",
     "apps.tenancy",
     "apps.platform_admin",
     "apps.users",
     "apps.guests",
     "apps.rooms",
     "apps.bookings",
+    "apps.day_use",
     "apps.stays",
+    "apps.operations",
     "apps.billing",
+    "apps.payments",
     "apps.consumptions",
     "apps.satisfaction",
     "apps.history",
     "apps.reports",
+    "apps.pos_restaurant",
 ]
 
 MIDDLEWARE = [
@@ -110,8 +142,10 @@ MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "apps.super_root.middleware.SuperRootApiLatencyMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "apps.tenancy.middleware.TenantMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -137,14 +171,9 @@ WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": env("POSTGRES_DB", "hotel_reception_db"),
-        "USER": env("POSTGRES_USER", "postgres"),
-        "PASSWORD": env("POSTGRES_PASSWORD", "postgres"),
-        "HOST": env("POSTGRES_HOST", "127.0.0.1"),
-        "PORT": env("POSTGRES_PORT", "5432"),
-    }
+    "default": dj_database_url.config(
+        default=os.environ.get("DATABASE_URL")
+    )
 }
 
 AUTH_USER_MODEL = "users.User"
@@ -173,7 +202,7 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"] if (BASE_DIR / "static").exists() else []
 
-MEDIA_URL = "media/"
+MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
 LOGIN_URL = "login"

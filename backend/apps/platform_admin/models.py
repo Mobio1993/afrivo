@@ -128,6 +128,133 @@ class HotelSubscription(models.Model):
             raise ValidationError(errors)
 
 
+class PlatformModule(models.Model):
+    code = models.SlugField(max_length=60, unique=True, verbose_name="Code")
+    name = models.CharField(max_length=120, verbose_name="Nom")
+    description = models.TextField(blank=True, verbose_name="Description")
+    monthly_license_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0.00"))],
+        verbose_name="Licence mensuelle",
+    )
+    is_active = models.BooleanField(default=True, verbose_name="Actif")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Cree le")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Mis a jour le")
+
+    class Meta:
+        verbose_name = "Module plateforme"
+        verbose_name_plural = "Modules plateforme"
+        ordering = ["name", "code"]
+        indexes = [
+            models.Index(fields=["code"], name="plat_module_code_idx"),
+            models.Index(fields=["is_active"], name="plat_module_active_idx"),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class PlatformLicense(models.Model):
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        SUSPENDED = "suspended", "Suspendue"
+        EXPIRED = "expired", "Expiree"
+        CANCELLED = "cancelled", "Annulee"
+
+    module = models.ForeignKey(
+        PlatformModule,
+        on_delete=models.PROTECT,
+        related_name="licenses",
+        verbose_name="Module",
+    )
+    organization = models.ForeignKey(
+        "tenancy.Organization",
+        on_delete=models.PROTECT,
+        related_name="platform_licenses",
+        blank=True,
+        null=True,
+        verbose_name="Organisation",
+    )
+    hotel = models.ForeignKey(
+        "tenancy.Hotel",
+        on_delete=models.PROTECT,
+        related_name="platform_licenses",
+        blank=True,
+        null=True,
+        verbose_name="Hotel",
+    )
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE, verbose_name="Statut")
+    starts_at = models.DateTimeField(default=timezone.now, verbose_name="Debut")
+    ends_at = models.DateTimeField(blank=True, null=True, verbose_name="Expiration")
+    monthly_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0.00"))],
+        verbose_name="Prix mensuel applique",
+    )
+    notes = models.TextField(blank=True, verbose_name="Notes")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Cree le")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Mis a jour le")
+
+    class Meta:
+        verbose_name = "Licence plateforme"
+        verbose_name_plural = "Licences plateforme"
+        ordering = ["-updated_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["module", "organization"],
+                condition=models.Q(hotel__isnull=True, organization__isnull=False, status="active"),
+                name="uniq_active_org_module_license",
+            ),
+            models.UniqueConstraint(
+                fields=["module", "hotel"],
+                condition=models.Q(hotel__isnull=False, status="active"),
+                name="uniq_active_hotel_module_license",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["module", "status"], name="plat_license_module_status_idx"),
+            models.Index(fields=["organization", "status"], name="plat_license_org_status_idx"),
+            models.Index(fields=["hotel", "status"], name="plat_license_hotel_status_idx"),
+            models.Index(fields=["ends_at"], name="plat_license_ends_at_idx"),
+        ]
+
+    def __str__(self):
+        target = self.hotel or self.organization or "Plateforme"
+        return f"{self.module.code} - {target}"
+
+    @property
+    def is_valid_now(self):
+        now = timezone.now()
+        if self.status != self.Status.ACTIVE:
+            return False
+        if not self.module.is_active:
+            return False
+        if self.starts_at and self.starts_at > now:
+            return False
+        if self.ends_at and self.ends_at < now:
+            return False
+        if self.hotel_id and not self.hotel.is_active:
+            return False
+        if self.organization_id and not self.organization.is_active:
+            return False
+        return True
+
+    def clean(self):
+        errors = {}
+        if not self.organization_id and not self.hotel_id:
+            errors["organization"] = "Une licence doit cibler une organisation ou un hotel."
+        if self.hotel_id and self.organization_id and self.hotel.organization_id != self.organization_id:
+            errors["hotel"] = "L'hotel doit appartenir a l'organisation de la licence."
+        if self.ends_at and self.ends_at < self.starts_at:
+            errors["ends_at"] = "La date d'expiration ne peut pas preceder la date de debut."
+        if errors:
+            raise ValidationError(errors)
+
+
 class PlatformAuditEvent(models.Model):
     class EventType(models.TextChoices):
         ORGANIZATION_CREATED = "organization_created", "Organisation creee"
@@ -138,6 +265,15 @@ class PlatformAuditEvent(models.Model):
         HOTEL_REACTIVATED = "hotel_reactivated", "Hotel reactive"
         SUBSCRIPTION_CREATED = "subscription_created", "Abonnement cree"
         SUBSCRIPTION_UPDATED = "subscription_updated", "Abonnement mis a jour"
+        MODULE_CREATED = "module_created", "Module cree"
+        MODULE_UPDATED = "module_updated", "Module mis a jour"
+        LICENSE_CREATED = "license_created", "Licence creee"
+        LICENSE_UPDATED = "license_updated", "Licence mise a jour"
+        LICENSE_SUSPENDED = "license_suspended", "Licence suspendue"
+        LICENSE_RENEWED = "license_renewed", "Licence renouvelee"
+        ADMIN_CREATED = "admin_created", "Admin cree"
+        ADMIN_UPDATED = "admin_updated", "Admin mis a jour"
+        ADMIN_ACCESS_RESET = "admin_access_reset", "Acces admin reinitialise"
         USER_LINKED = "user_linked", "Utilisateur rattache"
         SECURITY_REVIEW = "security_review", "Revue de securite"
 
@@ -169,4 +305,3 @@ class PlatformAuditEvent(models.Model):
     def __str__(self):
         label = self.target_label or self.target_type
         return f"{self.get_event_type_display()} - {label}"
-

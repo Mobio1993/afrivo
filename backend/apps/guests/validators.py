@@ -68,14 +68,28 @@ def validate_email_field(email, errors):
         errors.setdefault("email", []).append("Adresse email invalide.")
 
 
-def build_duplicate_warnings(*, instance, first_name, last_name, phone, secondary_phone, email, document_number, date_of_birth):
+def build_duplicate_warnings(
+    *,
+    instance,
+    first_name,
+    last_name,
+    phone,
+    secondary_phone,
+    email,
+    document_number,
+    date_of_birth,
+    hotel=None,
+):
     duplicate_queryset = Guest.objects.all()
+    resolved_hotel = hotel or getattr(instance, "hotel", None)
+    if resolved_hotel is not None:
+        duplicate_queryset = duplicate_queryset.filter(hotel=resolved_hotel)
     if instance is not None:
         duplicate_queryset = duplicate_queryset.exclude(pk=instance.pk)
 
     duplicate_filter = Q()
     if phone:
-        duplicate_filter |= Q(phone=phone)
+        duplicate_filter |= Q(phone=phone) | Q(secondary_phone=phone)
     if secondary_phone:
         duplicate_filter |= Q(phone=secondary_phone) | Q(secondary_phone=secondary_phone) | Q(secondary_phone=phone)
     if email:
@@ -103,9 +117,13 @@ def build_duplicate_warnings(*, instance, first_name, last_name, phone, secondar
     warnings = []
     for candidate in candidates:
         reasons = []
-        if phone and candidate.phone == phone:
-            reasons.append("telephone principal identique")
-        if secondary_phone and {candidate.phone, getattr(candidate, "secondary_phone", "")} & {phone, secondary_phone}:
+        candidate_numbers = {candidate.phone, getattr(candidate, "secondary_phone", "")}
+        submitted_numbers = {phone, secondary_phone}
+        if phone and phone in candidate_numbers:
+            reasons.append("telephone principal deja present")
+        if secondary_phone and secondary_phone in candidate_numbers:
+            reasons.append("telephone secondaire deja present")
+        if (candidate_numbers - {""}) & (submitted_numbers - {""}):
             reasons.append("numero de telephone deja present")
         if email and candidate.email.lower() == email:
             reasons.append("email identique")

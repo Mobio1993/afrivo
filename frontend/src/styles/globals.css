@@ -55,6 +55,59 @@ a {
   height: 100%;
   min-height: 100vh;
   overflow-x: clip;
+  isolation: isolate;
+}
+
+/* ─── Aurora blobs — lumières ambiantes animées ─────────────────────────────── */
+
+@keyframes aurora-1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33%       { transform: translate(50px, -40px) scale(1.10); }
+  66%       { transform: translate(-30px, 25px) scale(0.94); }
+}
+
+@keyframes aurora-2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  40%       { transform: translate(-45px, 30px) scale(1.07); }
+  70%       { transform: translate(25px, -20px) scale(0.96); }
+}
+
+@keyframes aurora-3 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  30%       { transform: translate(30px, 50px) scale(1.05); }
+  65%       { transform: translate(-20px, -35px) scale(0.98); }
+}
+
+#root::before,
+#root::after {
+  content: "";
+  position: fixed;
+  pointer-events: none;
+  z-index: -1;
+  border-radius: 50%;
+  filter: blur(90px);
+}
+
+#root::before {
+  width: 700px;
+  height: 700px;
+  top: -180px;
+  left: -120px;
+  background: radial-gradient(circle, rgba(15, 157, 138, 0.11) 0%, transparent 70%);
+  animation: aurora-1 20s ease-in-out infinite;
+}
+
+#root::after {
+  width: 580px;
+  height: 580px;
+  bottom: -100px;
+  right: -80px;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.09) 0%, transparent 70%);
+  animation: aurora-2 26s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #root::before, #root::after { animation: none; }
 }
 
 @media (max-width: 920px) {
@@ -149,11 +202,35 @@ a {
   color: #ffffff;
   min-height: 52px;
   box-shadow: var(--shadow-button);
+  position: relative;
+  overflow: hidden;
   transition:
     transform 0.18s ease,
     box-shadow 0.18s ease,
     opacity 0.18s ease,
     filter 0.18s ease;
+}
+
+.primary-button::after {
+  content: "";
+  position: absolute;
+  top: -60%;
+  left: -80%;
+  width: 45%;
+  height: 220%;
+  background: linear-gradient(
+    105deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.24) 50%,
+    transparent 80%
+  );
+  transform: skewX(-18deg);
+  pointer-events: none;
+  transition: left 0.52s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.primary-button:hover:not(:disabled)::after {
+  left: 130%;
 }
 
 .primary-button:hover:not(:disabled) {
@@ -230,6 +307,23 @@ a {
   font-weight: 700;
 }
 
+@keyframes status-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 200px;
+    padding-top: 15px;
+    padding-bottom: 15px;
+  }
+}
+
 .status-box,
 .alert-box,
 .success-box,
@@ -238,6 +332,17 @@ a {
   padding: 15px 16px;
   line-height: 1.65;
   border: 1px solid transparent;
+  animation: status-enter 0.22s ease-out both;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-box,
+  .alert-box,
+  .success-box,
+  .warning-box {
+    animation: none;
+  }
 }
 
 .status-box {
@@ -288,16 +393,66 @@ a {
   line-height: 1.8;
 }
 
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .page-stack {
   gap: 22px;
   min-width: 0;
   min-height: 0;
+  animation: page-enter 0.28s ease-out both;
 }
 
 .dashboard-shell {
   gap: 24px;
   min-width: 0;
   min-height: 0;
+  animation: page-enter 0.28s ease-out both;
+}
+
+@keyframes card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.page-stack > *,
+.dashboard-shell > * {
+  animation: card-enter 0.3s ease-out both;
+}
+
+.page-stack > *:nth-child(2),
+.dashboard-shell > *:nth-child(2) { animation-delay: 60ms; }
+
+.page-stack > *:nth-child(3),
+.dashboard-shell > *:nth-child(3) { animation-delay: 120ms; }
+
+.page-stack > *:nth-child(4),
+.dashboard-shell > *:nth-child(4) { animation-delay: 180ms; }
+
+.page-stack > *:nth-child(n+5),
+.dashboard-shell > *:nth-child(n+5) { animation-delay: 220ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .page-stack,
+  .dashboard-shell,
+  .page-stack > *,
+  .dashboard-shell > * {
+    animation: none;
+  }
 }
 
 .page-stack > *,
@@ -623,12 +778,146 @@ a {
   align-items: end;
 }
 
+@keyframes bar-grow {
+  from {
+    transform: scaleY(0);
+    opacity: 0.3;
+  }
+  to {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
 .chart-fill {
   width: 100%;
   min-height: 12px;
   border-radius: 14px 14px 10px 10px;
   background: linear-gradient(180deg, var(--primary), var(--primary-dark));
   box-shadow: 0 10px 20px rgba(15, 157, 138, 0.18);
+  transform-origin: bottom;
+  animation: bar-grow 0.5s cubic-bezier(0.34, 1.3, 0.64, 1) both;
+}
+
+.chart-column:nth-child(1)  .chart-fill { animation-delay: 100ms; }
+.chart-column:nth-child(2)  .chart-fill { animation-delay: 160ms; }
+.chart-column:nth-child(3)  .chart-fill { animation-delay: 220ms; }
+.chart-column:nth-child(4)  .chart-fill { animation-delay: 280ms; }
+.chart-column:nth-child(5)  .chart-fill { animation-delay: 340ms; }
+.chart-column:nth-child(6)  .chart-fill { animation-delay: 400ms; }
+.chart-column:nth-child(7)  .chart-fill { animation-delay: 450ms; }
+.chart-column:nth-child(n+8) .chart-fill { animation-delay: 490ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .chart-fill { animation: none; }
+}
+
+/* ─── Skeleton shimmer — animation partagée ──────────────────────────────── */
+
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    #e2e8f0 0%,
+    #f1f5f9 30%,
+    #ffffff 50%,
+    #f1f5f9 70%,
+    #e2e8f0 100%
+  );
+  background-size: 400% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
+}
+
+/* ─── Row stagger entrance — apparition en cascade des lignes de liste ─────── */
+
+@keyframes row-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.client-row,
+.expl-row,
+.ops-rail-item {
+  animation: row-enter 0.22s ease-out both;
+}
+
+.client-row:nth-child(1),
+.expl-row:nth-child(1),
+.ops-rail-item:nth-child(1)  { animation-delay: 30ms; }
+
+.client-row:nth-child(2),
+.expl-row:nth-child(2),
+.ops-rail-item:nth-child(2)  { animation-delay: 70ms; }
+
+.client-row:nth-child(3),
+.expl-row:nth-child(3),
+.ops-rail-item:nth-child(3)  { animation-delay: 110ms; }
+
+.client-row:nth-child(4),
+.expl-row:nth-child(4),
+.ops-rail-item:nth-child(4)  { animation-delay: 150ms; }
+
+.client-row:nth-child(5),
+.expl-row:nth-child(5),
+.ops-rail-item:nth-child(5)  { animation-delay: 185ms; }
+
+.client-row:nth-child(6),
+.expl-row:nth-child(6),
+.ops-rail-item:nth-child(6)  { animation-delay: 215ms; }
+
+.client-row:nth-child(n+7),
+.expl-row:nth-child(n+7),
+.ops-rail-item:nth-child(n+7) { animation-delay: 240ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .client-row,
+  .expl-row,
+  .ops-rail-item {
+    animation: none;
+  }
+}
+
+/* ─── Badge pop spring — surgissement au rendu initial ──────────────────────── */
+
+@keyframes badge-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.68);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.client-status-badge,
+.rooms-status-badge,
+.ops-bh-badge,
+.client-blacklist-badge {
+  animation: badge-pop 0.28s cubic-bezier(0.34, 1.5, 0.64, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .client-status-badge,
+  .rooms-status-badge,
+  .ops-bh-badge,
+  .client-blacklist-badge {
+    animation: none;
+  }
 }
 
 .filter-input,
@@ -676,9 +965,10 @@ a {
   outline: none;
   border-color: rgba(15, 157, 138, 0.42);
   box-shadow:
-    0 0 0 4px rgba(15, 157, 138, 0.12),
-    0 14px 28px rgba(15, 23, 42, 0.08);
+    0 0 0 4px rgba(15, 157, 138, 0.14),
+    0 20px 40px rgba(15, 23, 42, 0.10);
   background: #ffffff;
+  transform: translateY(-1px);
 }
 
 .form-grid textarea {

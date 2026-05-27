@@ -3,7 +3,7 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { canAccessPath, resolveDeniedRedirect } from "../auth/routePermissions";
 
-export function ProtectedRoute() {
+export function ProtectedRoute({ loginPath = "/login" }) {
   const { isAuthenticated, isLoading, user } = useAuth();
   const location = useLocation();
 
@@ -12,7 +12,7 @@ export function ProtectedRoute() {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace state={{ from: location }} />;
+    return <Navigate to={loginPath} replace state={{ from: location }} />;
   }
 
   if (!canAccessPath(user, location.pathname)) {

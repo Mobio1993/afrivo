@@ -1,0 +1,556 @@
+.smart-rooms-page .page-hero {
+  display: none;
+}
+
+.smart-rooms-page .sr-summary-grid,
+.smart-rooms-page .sr-cards-grid,
+.smart-rooms-page .sr-toolbar,
+.smart-rooms-page .sr-detail-grid,
+.smart-rooms-page .sr-security-layout {
+  display: grid;
+  min-width: 0;
+}
+
+/* ─── Summary cards ─────────────────────────────────────────── */
+
+.smart-rooms-page .sr-summary-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.smart-rooms-page .sr-summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.92));
+  border: 1px solid rgba(15, 157, 138, 0.1);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+}
+
+.smart-rooms-page .sr-summary-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+.smart-rooms-page .sr-summary-value {
+  font-size: clamp(1.5rem, 2.2vw, 2rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text-main);
+  line-height: 1;
+}
+
+.smart-rooms-page .sr-summary-card.card--available .sr-summary-value { color: #16a34a; }
+.smart-rooms-page .sr-summary-card.card--occupied .sr-summary-value  { color: #dc2626; }
+.smart-rooms-page .sr-summary-card.card--cleaning .sr-summary-value  { color: #d97706; }
+.smart-rooms-page .sr-summary-card.card--maintenance .sr-summary-value { color: #6b7280; }
+.smart-rooms-page .sr-summary-card.card--alert .sr-summary-value     { color: #ef4444; }
+.smart-rooms-page .sr-summary-card.card--presence .sr-summary-value  { color: #0f9d8a; }
+
+/* ─── Tabs ───────────────────────────────────────────────────── */
+
+.smart-rooms-page .sr-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 2px solid rgba(15, 157, 138, 0.12);
+  overflow-x: auto;
+}
+
+.smart-rooms-page .sr-tab {
+  padding: 10px 20px;
+  border: none;
+  background: transparent;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-soft);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.smart-rooms-page .sr-tab:hover {
+  color: var(--text-main);
+}
+
+.smart-rooms-page .sr-tab--active {
+  color: #0f9d8a;
+  border-bottom-color: #0f9d8a;
+  font-weight: 600;
+}
+
+/* ─── Badges ─────────────────────────────────────────────────── */
+
+.smart-rooms-page .sr-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.smart-rooms-page .badge--available  { background: rgba(220, 252, 231, 0.9); color: #15803d; }
+.smart-rooms-page .badge--occupied   { background: rgba(254, 226, 226, 0.9); color: #b91c1c; }
+.smart-rooms-page .badge--reserved   { background: rgba(219, 234, 254, 0.9); color: #1d4ed8; }
+.smart-rooms-page .badge--cleaning   { background: rgba(254, 243, 199, 0.9); color: #b45309; }
+.smart-rooms-page .badge--maintenance { background: rgba(229, 231, 235, 0.9); color: #374151; }
+.smart-rooms-page .alert--warning    { background: rgba(254, 243, 199, 0.95); color: #92400e; }
+.smart-rooms-page .alert--critical   { background: rgba(254, 226, 226, 0.95); color: #991b1b; }
+.smart-rooms-page .sr-badge--none    { background: rgba(220, 252, 231, 0.9); color: #15803d; }
+
+/* ─── Indicator dot (icon) ───────────────────────────────────── */
+
+.smart-rooms-page .sr-indicator-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.smart-rooms-page .sr-indicator-dot--on      { background: #22c55e; }
+.smart-rooms-page .sr-indicator-dot--off     { background: #d1d5db; }
+.smart-rooms-page .sr-indicator-dot--warn    { background: #f59e0b; }
+.smart-rooms-page .sr-indicator-dot--offline { background: #ef4444; }
+
+/* ─── Indicator text ─────────────────────────────────────────── */
+
+.smart-rooms-page .sr-indicator { font-size: 0.8rem; font-weight: 500; }
+.smart-rooms-page .sr-indicator--on  { color: #16a34a; }
+.smart-rooms-page .sr-indicator--off { color: var(--text-soft); }
+.smart-rooms-page .sr-indicator--warn { color: #d97706; }
+.smart-rooms-page .sr-value--warn    { color: #d97706; font-weight: 600; }
+
+/* ─── Receptionist view: card grid ──────────────────────────── */
+
+.smart-rooms-page .sr-cards-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.smart-rooms-page .sr-room-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(248, 250, 252, 0.93));
+  border: 1px solid rgba(15, 157, 138, 0.1);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+.smart-rooms-page .sr-room-card:hover {
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.09);
+  border-color: rgba(15, 157, 138, 0.22);
+}
+
+.smart-rooms-page .sr-room-card--warning {
+  border-color: rgba(245, 158, 11, 0.3);
+  background: linear-gradient(180deg, rgba(255, 251, 235, 0.98), rgba(254, 243, 199, 0.9));
+}
+
+.smart-rooms-page .sr-room-card--critical {
+  border-color: rgba(239, 68, 68, 0.3);
+  background: linear-gradient(180deg, rgba(255, 245, 245, 0.98), rgba(254, 226, 226, 0.9));
+}
+
+.smart-rooms-page .sr-room-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.smart-rooms-page .sr-room-number {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.smart-rooms-page .sr-room-card-type {
+  font-size: 0.78rem;
+  color: var(--text-soft);
+}
+
+.smart-rooms-page .sr-room-card-indicators {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.smart-rooms-page .sr-room-card-alert {
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 0.76rem;
+  font-weight: 500;
+}
+
+.smart-rooms-page .sr-room-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 2px;
+}
+
+.smart-rooms-page .sr-room-last-activity {
+  font-size: 0.74rem;
+  color: var(--text-soft);
+}
+
+.smart-rooms-page .sr-detail-btn {
+  font-size: 0.78rem;
+  padding: 4px 10px;
+}
+
+.smart-rooms-page .sr-detail-btn-sm {
+  font-size: 0.75rem;
+  padding: 3px 8px;
+}
+
+/* ─── Manager view ───────────────────────────────────────────── */
+
+.smart-rooms-page .sr-manager-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.smart-rooms-page .sr-toolbar {
+  grid-template-columns: 1.4fr 1fr 1fr 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.smart-rooms-page .sr-toolbar .filter-input {
+  margin-bottom: 0;
+}
+
+.smart-rooms-page .sr-table-wrapper {
+  overflow-x: auto;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 157, 138, 0.1);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
+}
+
+.smart-rooms-page .sr-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: rgba(255, 255, 255, 0.97);
+  font-size: 0.83rem;
+}
+
+.smart-rooms-page .sr-table thead tr {
+  background: rgba(15, 157, 138, 0.06);
+  border-bottom: 1px solid rgba(15, 157, 138, 0.12);
+}
+
+.smart-rooms-page .sr-table th {
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+  white-space: nowrap;
+}
+
+.smart-rooms-page .sr-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(15, 157, 138, 0.06);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.smart-rooms-page .sr-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.smart-rooms-page .sr-table tbody tr:hover td {
+  background: rgba(15, 157, 138, 0.03);
+}
+
+.smart-rooms-page .sr-table .sr-row--warning td { background: rgba(255, 251, 235, 0.6); }
+.smart-rooms-page .sr-table .sr-row--critical td { background: rgba(255, 245, 245, 0.6); }
+
+.smart-rooms-page .sr-cell-number {
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.smart-rooms-page .sr-cell-activity {
+  color: var(--text-soft);
+  font-size: 0.78rem;
+}
+
+.smart-rooms-page .sr-dot {
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.smart-rooms-page .sr-dot--on  { color: #16a34a; }
+.smart-rooms-page .sr-dot--off { color: var(--text-soft); }
+
+/* ─── Security view ──────────────────────────────────────────── */
+
+.smart-rooms-page .sr-security-layout {
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.smart-rooms-page .sr-security-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.smart-rooms-page .sr-security-section {
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(15, 157, 138, 0.1);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.04);
+}
+
+.smart-rooms-page .sr-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.smart-rooms-page .sr-section-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 0.7rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.smart-rooms-page .sr-section-count--critical { background: rgba(239, 68, 68, 0.15); color: #b91c1c; }
+.smart-rooms-page .sr-section-count--warning  { background: rgba(245, 158, 11, 0.15); color: #92400e; }
+
+.smart-rooms-page .sr-alert-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.smart-rooms-page .sr-alert-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 0.8rem;
+}
+
+.smart-rooms-page .sr-alert-item strong {
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.smart-rooms-page .sr-alert-item span {
+  flex: 1;
+  color: inherit;
+  opacity: 0.85;
+}
+
+.smart-rooms-page .sr-alert-item-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.smart-rooms-page .sr-alert-item--warning { background: rgba(254, 243, 199, 0.8); color: #92400e; }
+.smart-rooms-page .sr-alert-item--critical { background: rgba(254, 226, 226, 0.8); color: #991b1b; }
+
+.smart-rooms-page .sr-resolve-btn {
+  font-size: 0.74rem;
+  padding: 3px 10px;
+  flex-shrink: 0;
+}
+
+/* ─── Modal ──────────────────────────────────────────────────── */
+
+.smart-rooms-page .sr-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.35);
+  backdrop-filter: blur(4px);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.smart-rooms-page .sr-modal {
+  background: #fff;
+  border-radius: 20px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+  width: 100%;
+  max-width: 480px;
+  overflow: hidden;
+}
+
+.smart-rooms-page .sr-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid rgba(15, 157, 138, 0.1);
+}
+
+.smart-rooms-page .sr-modal-header h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.smart-rooms-page .sr-modal-close {
+  padding: 4px;
+}
+
+.smart-rooms-page .sr-modal-body {
+  padding: 20px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.smart-rooms-page .sr-detail-grid {
+  gap: 10px;
+}
+
+.smart-rooms-page .sr-detail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.83rem;
+}
+
+.smart-rooms-page .sr-detail-label {
+  color: var(--text-soft);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.smart-rooms-page .sr-modal-alert {
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+/* ─── Misc ───────────────────────────────────────────────────── */
+
+.smart-rooms-page .sr-loading {
+  padding: 48px;
+  text-align: center;
+  color: var(--text-soft);
+  font-size: 0.9rem;
+}
+
+.smart-rooms-page .sr-empty {
+  padding: 32px;
+  text-align: center;
+  color: var(--text-soft);
+  font-size: 0.9rem;
+}
+
+.smart-rooms-page .sr-empty-sm {
+  font-size: 0.8rem;
+  color: var(--text-soft);
+  margin: 0;
+}
+
+.smart-rooms-page .sr-error-banner {
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: rgba(254, 243, 199, 0.9);
+  color: #92400e;
+  font-size: 0.83rem;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.smart-rooms-page .sr-mock-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.15);
+  color: #92400e;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+/* ─── Responsive ─────────────────────────────────────────────── */
+
+@media (max-width: 1100px) {
+  .smart-rooms-page .sr-summary-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .smart-rooms-page .sr-cards-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 920px) {
+  .smart-rooms-page .sr-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .smart-rooms-page .sr-cards-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .smart-rooms-page .sr-toolbar {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .smart-rooms-page .sr-security-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .smart-rooms-page .sr-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .smart-rooms-page .sr-cards-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .smart-rooms-page .sr-toolbar {
+    grid-template-columns: 1fr;
+  }
+}

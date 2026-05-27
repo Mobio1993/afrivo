@@ -11,6 +11,7 @@ from apps.bookings.models import Booking
 from apps.guests.models import Guest
 from apps.rooms.models import Room, RoomType
 from apps.stays.models import Stay
+from apps.tenancy.models import Hotel, Organization
 
 
 User = get_user_model()
@@ -26,7 +27,7 @@ class StayModelTests(TestCase):
         self.room_type = RoomType.objects.create(
             name="Standard",
             code="STD",
-            capacity=2,
+            capacity=3,
             max_adults=2,
             max_children=1,
             base_price_per_night=50000,
@@ -56,6 +57,88 @@ class StayModelTests(TestCase):
         self.assertEqual(stay.number_of_guests, 2)
         self.assertEqual(stay.adults_count, 1)
         self.assertEqual(stay.children_count, 1)
+        # Vérifie l'absence des anciens champs doublons
+        self.assertFalse(hasattr(Stay, "adults"), "Le champ 'adults' ne doit plus exister sur Stay")
+        self.assertFalse(hasattr(Stay, "children"), "Le champ 'children' ne doit plus exister sur Stay")
+
+    def test_create_from_booking_number_of_guests_equals_adults_count_plus_children_count(self):
+        booking = Booking.objects.create(
+            guest=self.guest,
+            room_type=self.room_type,
+            room=self.room,
+            status=Booking.Status.CONFIRMED,
+            source=Booking.BookingSource.WALK_IN,
+            check_in_date=timezone.localdate(),
+            check_out_date=timezone.localdate() + timedelta(days=1),
+            adults=2,
+            children=1,
+        )
+        stay = Stay.create_from_booking(booking)
+        self.assertEqual(stay.adults_count, 2)
+        self.assertEqual(stay.children_count, 1)
+        self.assertEqual(stay.number_of_guests, stay.adults_count + stay.children_count)
+
+    def test_create_from_booking_rejects_check_in_before_arrival_date(self):
+        booking = Booking.objects.create(
+            guest=self.guest,
+            room_type=self.room_type,
+            room=self.room,
+            status=Booking.Status.CONFIRMED,
+            source=Booking.BookingSource.PHONE,
+            check_in_date=timezone.localdate() + timedelta(days=1),
+            check_out_date=timezone.localdate() + timedelta(days=3),
+            adults=1,
+            children=0,
+        )
+
+        with self.assertRaisesMessage(ValidationError, "avant la date d'arrivee prevue"):
+            Stay.create_from_booking(booking)
+
+    def test_walk_in_defaults_adults_count_to_one_and_children_count_to_zero(self):
+        stay = Stay.create_walk_in(
+            guest=self.guest,
+            room=self.room,
+            actual_check_in=timezone.now(),
+        )
+        self.assertEqual(stay.adults_count, 1)
+        self.assertEqual(stay.children_count, 0)
+        self.assertEqual(stay.number_of_guests, 1)
+
+    def test_walk_in_explicit_adults_count_and_children_count(self):
+        stay = Stay.create_walk_in(
+            guest=self.guest,
+            room=self.room,
+            actual_check_in=timezone.now(),
+            adults_count=2,
+            children_count=1,
+        )
+        self.assertEqual(stay.adults_count, 2)
+        self.assertEqual(stay.children_count, 1)
+        self.assertEqual(stay.number_of_guests, 3)
+
+    def test_sync_corrects_adults_count_below_one(self):
+        """_sync_operational_fields doit corriger adults_count < 1 à 1."""
+        stay = Stay.create_walk_in(
+            guest=self.guest,
+            room=self.room,
+            actual_check_in=timezone.now(),
+            adults_count=1,
+            children_count=0,
+        )
+        stay.adults_count = 0
+        stay._sync_operational_fields()
+        self.assertEqual(stay.adults_count, 1)
+
+    def test_sync_corrects_children_count_below_zero(self):
+        """_sync_operational_fields doit corriger children_count < 0 à 0."""
+        stay = Stay.create_walk_in(
+            guest=self.guest,
+            room=self.room,
+            actual_check_in=timezone.now(),
+        )
+        stay.children_count = -3
+        stay._sync_operational_fields()
+        self.assertEqual(stay.children_count, 0)
 
     def test_walk_in_stay_blocks_second_active_stay_for_same_room(self):
         Stay.create_walk_in(
@@ -94,21 +177,42 @@ class StayModelTests(TestCase):
         self.assertEqual(stay.checked_out_by, user)
         self.assertEqual(self.room.status, Room.Status.CLEANING)
 
+    def test_number_of_guests_exceeds_capacity_raises_error(self):
+        with self.assertRaises(ValidationError):
+            Stay.create_walk_in(
+                guest=self.guest,
+                room=self.room,
+                actual_check_in=timezone.now(),
+                adults_count=3,
+                children_count=1,
+            )
+
 
 class StayApiTests(TestCase):
     def setUp(self):
+        self.organization = Organization.objects.create(name="Stay API Group", slug="stay-api-group")
+        self.hotel = Hotel.objects.create(
+            organization=self.organization,
+            name="Stay API Hotel",
+            code="STAY",
+            slug="stay-api-hotel",
+        )
         self.user = User.objects.create_user(
             username="reception",
             password="testpass123",
             role=User.Role.RECEPTION,
+            organization=self.organization,
+            hotel=self.hotel,
         )
         self.client.force_login(self.user)
         self.guest = Guest.objects.create(
+            hotel=self.hotel,
             first_name="Fatou",
             last_name="Ndiaye",
             phone="+221770000002",
         )
         self.room_type = RoomType.objects.create(
+            hotel=self.hotel,
             name="Deluxe",
             code="DLX",
             capacity=3,
@@ -116,7 +220,7 @@ class StayApiTests(TestCase):
             max_children=1,
             base_price_per_night=75000,
         )
-        self.room = Room.objects.create(number="202", room_type=self.room_type)
+        self.room = Room.objects.create(hotel=self.hotel, number="202", room_type=self.room_type)
 
     def test_create_stay_endpoint_supports_walk_in_without_booking(self):
         response = self.client.post(
@@ -141,4 +245,29 @@ class StayApiTests(TestCase):
         self.assertEqual(payload["guest"], self.guest.full_name)
         self.assertEqual(payload["room"], self.room.number)
         self.assertEqual(payload["source_code"], "walk_in")
+        self.assertEqual(payload["number_of_guests"], 2)
+        self.assertEqual(payload["adults_count"], 2)
+        self.assertEqual(payload["children_count"], 0)
+
+    def test_create_stay_endpoint_accepts_legacy_adults_children_keys(self):
+        """Le frontend peut encore envoyer 'adults'/'children' : la vue les redirige."""
+        response = self.client.post(
+            reverse("api-create-stay"),
+            data=json.dumps(
+                {
+                    "guest_id": self.guest.id,
+                    "room_id": self.room.id,
+                    "source": "walk_in",
+                    "planned_check_out": (timezone.now() + timedelta(days=1)).isoformat(),
+                    "adults": 1,
+                    "children": 1,
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()["stay"]
+        self.assertEqual(payload["adults_count"], 1)
+        self.assertEqual(payload["children_count"], 1)
         self.assertEqual(payload["number_of_guests"], 2)

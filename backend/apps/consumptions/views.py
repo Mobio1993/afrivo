@@ -8,7 +8,9 @@ from rest_framework.response import Response
 from apps.consumptions.models import ClientConsumption, ClientConsumptionItem, ServiceDepartment
 from apps.consumptions.serializers import ClientConsumptionSerializer, ServiceDepartmentSerializer
 from apps.history.models import HistoryEntry
-from apps.history.services import log_history
+from apps.audit_logs.services import HotelAuditService
+
+log_history = HotelAuditService.log_history
 from apps.tenancy.drf import AuthenticatedHotelPermission, HotelScopedQuerysetMixin
 
 

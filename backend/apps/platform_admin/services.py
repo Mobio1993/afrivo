@@ -5,7 +5,8 @@ from django.db import transaction
 from django.db.models import Count, F, Q
 from django.utils import timezone
 
-from apps.platform_admin.models import HotelSubscription, PlatformAuditEvent
+from apps.audit_logs.services import PlatformAuditService
+from apps.platform_admin.models import HotelSubscription, PlatformAuditEvent, PlatformLicense, PlatformModule
 from apps.tenancy.models import Hotel, Organization
 from apps.users.models import User
 from apps.users.services import create_hotel_admin_user
@@ -25,9 +26,10 @@ def create_platform_audit_event(
     resolved_target_id = target_id if target_id is not None else getattr(target, "pk", None)
     resolved_target_label = target_label or str(target or resolved_target_type or "")
 
-    return PlatformAuditEvent.objects.create(
+    return PlatformAuditService.log(
         actor=actor,
         event_type=event_type,
+        target=target,
         target_type=resolved_target_type,
         target_id=resolved_target_id,
         target_label=resolved_target_label,
@@ -113,24 +115,15 @@ def list_platform_hotels(*, organization_id=None, is_active=None, subscription_s
 
 
 def list_platform_subscriptions(*, organization_id=None, hotel_id=None, status=None, plan_id=None, search=""):
-    qs = HotelSubscription.objects.select_related("organization", "hotel", "plan").annotate(
-        active_user_count=Count("hotel__users", filter=Q(hotel__users__is_active=True), distinct=True),
+    from apps.licensing.services.subscription_service import SubscriptionService
+
+    return SubscriptionService.list(
+        organization_id=organization_id,
+        hotel_id=hotel_id,
+        status=status,
+        plan_id=plan_id,
+        search=search,
     )
-    if organization_id:
-        qs = qs.filter(organization_id=organization_id)
-    if hotel_id:
-        qs = qs.filter(hotel_id=hotel_id)
-    if status:
-        qs = qs.filter(status=status)
-    if plan_id:
-        qs = qs.filter(plan_id=plan_id)
-    if search:
-        qs = qs.filter(
-            Q(hotel__name__icontains=search)
-            | Q(organization__name__icontains=search)
-            | Q(plan__name__icontains=search)
-        )
-    return qs.order_by("-updated_at", "-id")
 
 
 def list_platform_admin_users(include_hotel_admins=True):
@@ -164,114 +157,73 @@ def list_platform_audit_events(*, limit=20, event_type="", target_type="", searc
     return queryset[:limit]
 
 
+def list_platform_modules(*, search="", is_active=None):
+    from apps.licensing.services.module_license_service import ModuleLicenseService
+
+    return ModuleLicenseService.list_modules(search=search, is_active=is_active)
+
+
+def list_platform_licenses(*, module_id=None, organization_id=None, hotel_id=None, status="", search=""):
+    from apps.licensing.services.module_license_service import ModuleLicenseService
+
+    return ModuleLicenseService.list_licenses(
+        module_id=module_id,
+        organization_id=organization_id,
+        hotel_id=hotel_id,
+        status=status,
+        search=search,
+    )
+
+
+def platform_module_access_allowed(*, module_code, organization_id=None, hotel_id=None, now=None):
+    from apps.licensing.services.module_license_service import ModuleLicenseService
+
+    return ModuleLicenseService.access_allowed(
+        module_code=module_code,
+        organization_id=organization_id,
+        hotel_id=hotel_id,
+        now=now,
+    )
+
+
+@transaction.atomic
+def renew_platform_license(*, license_obj, ends_at, actor=None, note=""):
+    from apps.licensing.services.module_license_service import ModuleLicenseService
+
+    return ModuleLicenseService.renew(license_obj=license_obj, ends_at=ends_at, actor=actor, note=note)
+
+
+@transaction.atomic
+def suspend_platform_license(*, license_obj, actor=None, note=""):
+    from apps.licensing.services.module_license_service import ModuleLicenseService
+
+    return ModuleLicenseService.suspend(license_obj=license_obj, actor=actor, note=note)
+
+
 @transaction.atomic
 def process_subscription_lifecycle(*, now=None):
-    reference_time = now or timezone.now()
-    suspended_ids = []
-    expired_ids = []
+    from apps.licensing.services.subscription_service import SubscriptionService
 
-    active_due = (
-        HotelSubscription.objects.select_related("hotel", "plan")
-        .filter(status=HotelSubscription.Status.ACTIVE, ends_at__isnull=False, ends_at__lte=reference_time)
-    )
-    for subscription in active_due:
-        subscription.status = HotelSubscription.Status.SUSPENDED
-        subscription.save(update_fields=["status", "updated_at"])
-        _sync_hotel_with_subscription(subscription, active=False)
-        create_platform_audit_event(
-            actor=None,
-            event_type=PlatformAuditEvent.EventType.SUBSCRIPTION_UPDATED,
-            target=subscription,
-            metadata={
-                "action": "lifecycle_auto_suspended",
-                "hotel_id": subscription.hotel_id,
-                "effective_at": reference_time.isoformat(),
-            },
-        )
-        suspended_ids.append(subscription.id)
-
-    trial_due = (
-        HotelSubscription.objects.select_related("hotel", "plan")
-        .filter(status=HotelSubscription.Status.TRIAL, trial_ends_at__isnull=False, trial_ends_at__lte=reference_time)
-    )
-    for subscription in trial_due:
-        subscription.status = HotelSubscription.Status.EXPIRED
-        subscription.save(update_fields=["status", "updated_at"])
-        _sync_hotel_with_subscription(subscription, active=False)
-        create_platform_audit_event(
-            actor=None,
-            event_type=PlatformAuditEvent.EventType.SUBSCRIPTION_UPDATED,
-            target=subscription,
-            metadata={
-                "action": "trial_expired",
-                "hotel_id": subscription.hotel_id,
-                "effective_at": reference_time.isoformat(),
-            },
-        )
-        expired_ids.append(subscription.id)
-
-    return {
-        "processed_at": reference_time.isoformat(),
-        "suspended_count": len(suspended_ids),
-        "expired_count": len(expired_ids),
-        "suspended_ids": suspended_ids,
-        "expired_ids": expired_ids,
-    }
+    return SubscriptionService.process_lifecycle(now=now)
 
 
 @transaction.atomic
 def renew_platform_subscription(*, subscription, duration_days, actor=None, note=""):
-    reference_time = timezone.now()
-    base_time = subscription.ends_at if subscription.ends_at and subscription.ends_at > reference_time else reference_time
-    subscription.starts_at = subscription.starts_at or reference_time
-    subscription.ends_at = base_time + timedelta(days=duration_days)
-    subscription.status = HotelSubscription.Status.ACTIVE
-    subscription.trial_ends_at = None
-    if note:
-        subscription.notes = f"{subscription.notes}\n{note}".strip()
-    subscription.save(update_fields=["starts_at", "ends_at", "status", "trial_ends_at", "notes", "updated_at"])
-    _sync_hotel_with_subscription(subscription, active=True)
-    create_platform_audit_event(
+    from apps.licensing.services.subscription_service import SubscriptionService
+
+    return SubscriptionService.renew(
+        subscription=subscription,
+        duration_days=duration_days,
         actor=actor,
-        event_type=PlatformAuditEvent.EventType.SUBSCRIPTION_UPDATED,
-        target=subscription,
-        metadata={
-            "action": "renew",
-            "duration_days": duration_days,
-            "new_ends_at": subscription.ends_at.isoformat() if subscription.ends_at else "",
-        },
+        note=note,
     )
-    return subscription
 
 
 @transaction.atomic
 def change_platform_subscription_plan(*, subscription, new_plan, actor=None, note=""):
-    current_price = _plan_reference_price(subscription.plan, subscription.billing_cycle)
-    next_price = _plan_reference_price(new_plan, subscription.billing_cycle)
-    if next_price > current_price:
-        change_kind = "upgrade"
-    elif next_price < current_price:
-        change_kind = "downgrade"
-    else:
-        change_kind = "lateral"
+    from apps.licensing.services.subscription_service import SubscriptionService
 
-    subscription.plan = new_plan
-    if note:
-        subscription.notes = f"{subscription.notes}\n{note}".strip()
-    subscription.save(update_fields=["plan", "notes", "updated_at"])
-    create_platform_audit_event(
-        actor=actor,
-        event_type=PlatformAuditEvent.EventType.SUBSCRIPTION_UPDATED,
-        target=subscription,
-        metadata={
-            "action": "change_plan",
-            "change_kind": change_kind,
-            "previous_plan_price": str(current_price),
-            "new_plan_price": str(next_price),
-            "new_plan_id": new_plan.id,
-        },
-    )
-    return subscription, change_kind
+    return SubscriptionService.change_plan(subscription=subscription, new_plan=new_plan, actor=actor, note=note)
 
 
 @transaction.atomic
@@ -393,6 +345,7 @@ def build_platform_dashboard_payload():
     active_subscriptions = subscriptions_queryset.filter(status=HotelSubscription.Status.ACTIVE).count()
     trial_subscriptions = subscriptions_queryset.filter(status=HotelSubscription.Status.TRIAL).count()
     suspended_subscriptions = subscriptions_queryset.filter(status=HotelSubscription.Status.SUSPENDED).count()
+    expired_subscriptions = subscriptions_queryset.filter(status=HotelSubscription.Status.EXPIRED).count()
     platform_admin_count = users_queryset.filter(is_platform_admin=True, is_active=True).count()
     hotel_admin_count = users_queryset.filter(role=User.Role.ADMIN, is_platform_admin=False, is_active=True).count()
     hotels_nearing_quota = list_platform_hotels().filter(
@@ -432,12 +385,21 @@ def build_platform_dashboard_payload():
             {
                 "label": "Hotels actifs",
                 "value": active_hotels,
-                "meta": f"{inactive_hotels} hotel(s) inactif(s) ou suspendu(s)",
+                "meta": "En activite",
+            },
+            {
+                "label": "Hotels inactifs",
+                "value": inactive_hotels,
+                "meta": "Suspendus ou fermes",
             },
             {
                 "label": "Abonnements actifs",
                 "value": active_subscriptions,
-                "meta": f"{trial_subscriptions} essai(s), {suspended_subscriptions} suspendu(s)",
+                "meta": (
+                    f"{trial_subscriptions} essai(s), "
+                    f"{suspended_subscriptions} suspendu(s), "
+                    f"{expired_subscriptions} expire(s)"
+                ),
             },
             {
                 "label": "Admins plateforme",
@@ -456,7 +418,7 @@ def build_platform_dashboard_payload():
             {
                 "status": HotelSubscription.Status.EXPIRED,
                 "label": HotelSubscription.Status.EXPIRED.label,
-                "count": subscriptions_queryset.filter(status=HotelSubscription.Status.EXPIRED).count(),
+                "count": expired_subscriptions,
             },
         ],
         "quota_highlights": [
