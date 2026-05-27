@@ -49,7 +49,10 @@ if not SECRET_KEY:
         SECRET_KEY = "unsafe-development-key"
     else:
         raise ImproperlyConfigured("DJANGO_SECRET_KEY est obligatoire en production.")
-ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost")
+ALLOWED_HOSTS = env_list(
+    "DJANGO_ALLOWED_HOSTS",
+    "127.0.0.1,localhost,afrivo-backend.onrender.com"
+)
 CORS_ALLOWED_ORIGINS = env_list(
     "CORS_ALLOWED_ORIGINS",
     "http://localhost:5173,http://127.0.0.1:5173",
