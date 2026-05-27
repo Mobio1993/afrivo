@@ -289,7 +289,7 @@ def login_api(request):
     except (json.JSONDecodeError, UnicodeDecodeError):
         return api_error(detail="Requete invalide.", code="invalid_request")
 
-    username = (payload.get("username") or "").strip()
+    username = (payload.get("identifier") or payload.get("username") or "").strip()
     password = payload.get("password") or ""
     remember_me = bool(payload.get("remember_me"))
     ip_address = _client_ip(request)

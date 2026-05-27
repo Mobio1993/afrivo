@@ -1,4 +1,8 @@
 from django.urls import path
+from apps.users.views import (
+    HotelLoginView,
+    HotelLogoutView,
+)
 
 from apps.users.views import UserViewSet
 
@@ -14,4 +18,6 @@ urlpatterns = [
     path("", user_list, name="api-users"),
     path("<int:pk>/set_password/", user_set_password, name="api-user-set-password"),
     path("<int:pk>/", user_detail, name="api-user-detail"),
+    path("login/", HotelLoginView.as_view(), name="api-login"),
+    path("logout/", HotelLogoutView.as_view(), name="api-logout"),
 ]
