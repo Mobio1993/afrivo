@@ -1,5 +1,9 @@
 from django.core.exceptions import ValidationError
+from django.contrib.postgres.constraints import ExclusionConstraint
+from django.contrib.postgres.fields import DateRangeField, RangeOperators
 from django.db import models, transaction
+from django.db.models import Func
+from django.db.models import Sum
 from django.utils import timezone
 
 from apps.core.references import generate_unique_reference
@@ -92,6 +96,25 @@ class Booking(models.Model):
                 condition=models.Q(adults__gte=1),
                 name="booking_at_least_one_adult",
             ),
+            ExclusionConstraint(
+                name="booking_no_active_room_overlap",
+                expressions=[
+                    (
+                        Func(
+                            "check_in_date",
+                            "check_out_date",
+                            function="DATERANGE",
+                            output_field=DateRangeField(),
+                        ),
+                        RangeOperators.OVERLAPS,
+                    ),
+                    ("room", RangeOperators.EQUAL),
+                ],
+                condition=models.Q(
+                    room__isnull=False,
+                    status__in=["pending", "confirmed", "checked_in"],
+                ),
+            ),
         ]
         indexes = [
             models.Index(fields=["hotel", "check_in_date"], name="booking_hotel_checkin_idx"),
@@ -130,15 +153,44 @@ class Booking(models.Model):
         if self.room and not self.room.is_active:
             errors["room"] = "La chambre selectionnee est inactive."
 
+        if (
+            self.room
+            and self.room.status == Room.Status.OUT_OF_SERVICE
+            and self.status not in {self.Status.CANCELLED, self.Status.NO_SHOW}
+        ):
+            errors["room"] = "La chambre selectionnee est hors service."
+
         if errors:
             raise ValidationError(errors)
+
+        if self.room_id and self.check_in_date and self.check_out_date:
+            validate_room_not_overlapping(
+                room=self.room,
+                check_in_date=self.check_in_date,
+                check_out_date=self.check_out_date,
+                exclude_booking=self,
+            )
+
+    @property
+    def blocks_room_availability(self):
+        return self.room_id and self.status in ACTIVE_ROOM_OVERLAP_STATUSES
+
+    def _save_with_room_lock(self, *args, **kwargs):
+        with transaction.atomic():
+            room = Room.objects.select_for_update().get(pk=self.room_id)
+            self.room = room
+            self.full_clean()
+            super().save(*args, **kwargs)
 
     def save(self, *args, **kwargs):
         is_new = self._state.adding
         if not self.reference:
             self.reference = self.generate_reference()
-        self.full_clean()
-        super().save(*args, **kwargs)
+        if self.blocks_room_availability:
+            self._save_with_room_lock(*args, **kwargs)
+        else:
+            self.full_clean()
+            super().save(*args, **kwargs)
         if self.room_id:
             from apps.rooms.services import sync_room_operational_status
 
@@ -158,9 +210,101 @@ class Booking(models.Model):
                 },
             )
 
+    def confirm(self, *, actor=None):
+        if self.status != self.Status.PENDING:
+            raise ValidationError("Seule une reservation en attente peut etre confirmee.")
+
+        self.status = self.Status.CONFIRMED
+        self.save(update_fields=["status", "updated_at"])
+        log_history(
+            action_type=HistoryEntry.ActionType.STATUS_UPDATED,
+            module="bookings",
+            entity_type="Booking",
+            entity_reference=self.reference,
+            description=f"Reservation {self.reference} confirmee.",
+            actor=actor,
+            metadata={"booking_id": self.id, "status": self.status},
+        )
+
+    def cancel(self, *, actor=None):
+        if hasattr(self, "stay"):
+            raise ValidationError("Une reservation convertie en sejour ne peut plus etre annulee.")
+        if self.status not in {self.Status.PENDING, self.Status.CONFIRMED}:
+            raise ValidationError("Cette reservation ne peut pas etre annulee dans son etat actuel.")
+
+        self.status = self.Status.CANCELLED
+        self.save(update_fields=["status", "updated_at"])
+        log_history(
+            action_type=HistoryEntry.ActionType.STATUS_UPDATED,
+            module="bookings",
+            entity_type="Booking",
+            entity_reference=self.reference,
+            description=f"Reservation {self.reference} annulee.",
+            actor=actor,
+            metadata={"booking_id": self.id, "status": self.status},
+        )
+
+    def mark_no_show(self, *, actor=None):
+        if hasattr(self, "stay"):
+            raise ValidationError("Une reservation convertie en sejour ne peut pas etre marquee no-show.")
+        if self.status != self.Status.CONFIRMED:
+            raise ValidationError("Seule une reservation confirmee peut etre marquee no-show.")
+
+        self.status = self.Status.NO_SHOW
+        self.save(update_fields=["status", "updated_at"])
+        log_history(
+            action_type=HistoryEntry.ActionType.STATUS_UPDATED,
+            module="bookings",
+            entity_type="Booking",
+            entity_reference=self.reference,
+            description=f"Reservation {self.reference} marquee no-show.",
+            actor=actor,
+            metadata={"booking_id": self.id, "status": self.status},
+        )
+
     @staticmethod
     def generate_reference():
         return generate_unique_reference(Booking, "RES")
+
+
+ACTIVE_ROOM_OVERLAP_STATUSES = [
+    Booking.Status.PENDING,
+    Booking.Status.CONFIRMED,
+    Booking.Status.CHECKED_IN,
+]
+
+
+def get_overlapping_room_booking_queryset(*, room, check_in_date, check_out_date, exclude_booking=None):
+    queryset = Booking.objects.filter(
+        room=room,
+        status__in=ACTIVE_ROOM_OVERLAP_STATUSES,
+        check_in_date__lt=check_out_date,
+        check_out_date__gt=check_in_date,
+    )
+    if room.hotel_id:
+        queryset = queryset.filter(hotel=room.hotel)
+    if exclude_booking and exclude_booking.pk:
+        queryset = queryset.exclude(pk=exclude_booking.pk)
+    return queryset
+
+
+def validate_room_not_overlapping(
+    *,
+    room,
+    check_in_date,
+    check_out_date,
+    exclude_booking=None,
+    message="Cette chambre est déjà réservée sur cette période.",
+):
+    if not room or not check_in_date or not check_out_date:
+        return
+    if get_overlapping_room_booking_queryset(
+        room=room,
+        check_in_date=check_in_date,
+        check_out_date=check_out_date,
+        exclude_booking=exclude_booking,
+    ).exists():
+        raise ValidationError({"room": message})
 
 
 class DayUse(models.Model):
@@ -257,7 +401,7 @@ class DayUse(models.Model):
 
     @property
     def paid_amount(self):
-        return sum(payment.amount for payment in self.payments.filter(status="paid"))
+        return self.payments.filter(status="paid").aggregate(total=Sum("amount"))["total"] or 0
 
     @property
     def balance_amount(self):
@@ -282,10 +426,10 @@ class DayUse(models.Model):
         if self.hotel_id and self.room_id and self.room and self.room.hotel_id and self.room.hotel_id != self.hotel_id:
             errors["room"] = "La chambre selectionnee doit appartenir au meme hotel que le day use."
 
-        if not self.room.is_active:
+        if self.room_id and self.room and not self.room.is_active:
             errors["room"] = "La chambre selectionnee est inactive."
 
-        if self.room.status == Room.Status.OUT_OF_SERVICE:
+        if self.room_id and self.room and self.room.status == Room.Status.OUT_OF_SERVICE:
             errors["room"] = "La chambre selectionnee est hors service."
 
         if self.check_in_at and self.check_out_at and self.check_out_at < self.check_in_at:
