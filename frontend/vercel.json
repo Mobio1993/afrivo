@@ -3,6 +3,10 @@
     {
       "source": "/api/:path*",
       "destination": "https://afrivo-backend.onrender.com/api/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
