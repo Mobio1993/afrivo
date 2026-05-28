@@ -1,5 +1,6 @@
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 let refreshPromise = null;
+let csrfToken = "";
 const SESSION_EXPIRED_MESSAGE = "Votre session a expire. Veuillez vous reconnecter.";
 const REQUEST_TIMEOUT_MS = 15000;
 
@@ -14,6 +15,10 @@ function getCookie(name) {
     return parts.pop().split(";").shift();
   }
   return "";
+}
+
+function getCsrfToken() {
+  return csrfToken || getCookie("csrftoken");
 }
 
 function buildApiUrl(url) {
@@ -93,7 +98,7 @@ async function refreshAccessToken() {
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
-        "X-CSRFToken": getCookie("csrftoken"),
+        "X-CSRFToken": getCsrfToken(),
       },
     })
       .then(async (response) => {
@@ -178,14 +183,16 @@ export async function fetchJson(url, options = {}, allowRetry = true) {
 }
 
 export async function ensureCsrfCookie() {
-  return fetchJson("/api/auth/csrf/", { method: "GET" });
+  const payload = await fetchJson("/api/auth/csrf/", { method: "GET" });
+  csrfToken = payload.csrf_token || "";
+  return payload;
 }
 
 export async function postJson(url, body) {
   return fetchJson(url, {
     method: "POST",
     headers: {
-      "X-CSRFToken": getCookie("csrftoken"),
+      "X-CSRFToken": getCsrfToken(),
     },
     body: JSON.stringify(body || {}),
   });
@@ -195,7 +202,7 @@ export async function sendJson(url, method, body = null) {
   return fetchJson(url, {
     method,
     headers: {
-      "X-CSRFToken": getCookie("csrftoken"),
+      "X-CSRFToken": getCsrfToken(),
     },
     ...(body !== null ? { body: JSON.stringify(body) } : {}),
   });
@@ -205,7 +212,7 @@ export async function sendFormData(url, method, formData) {
   return fetchJson(url, {
     method,
     headers: {
-      "X-CSRFToken": getCookie("csrftoken"),
+      "X-CSRFToken": getCsrfToken(),
     },
     body: formData,
   });

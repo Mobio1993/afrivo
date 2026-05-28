@@ -16,6 +16,7 @@ urlpatterns = [
     path("login/", HotelLoginView.as_view(), name="login"),
     path("logout/", HotelLogoutView.as_view(), name="logout"),
     path("admin/", admin.site.urls),
+    path("api/auth/", include("apps.users.urls")),
 ]
 
 if settings.DEBUG:

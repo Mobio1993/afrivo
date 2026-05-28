@@ -7,6 +7,7 @@ from django.core import signing
 from django.contrib.auth.password_validation import validate_password
 from django.db.models import Q
 from django.utils import timezone
+from django.middleware.csrf import get_token
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
@@ -279,7 +280,7 @@ def _start_login_2fa_challenge(request, user, *, remember_me=False):
 @require_GET
 @ensure_csrf_cookie
 def csrf_api(request):
-    return api_success(csrf="ok")
+    return api_success(csrf_token=get_token(request))
 
 
 @require_POST

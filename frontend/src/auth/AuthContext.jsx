@@ -26,11 +26,14 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let mounted = true;
 
-    Promise.all([ensureCsrfCookie(), refreshSession()]).finally(() => {
-      if (mounted) {
-        setIsLoading(false);
-      }
-    });
+    ensureCsrfCookie()
+      .catch(() => null)
+      .then(() => refreshSession())
+      .finally(() => {
+        if (mounted) {
+          setIsLoading(false);
+        }
+      });
 
     return () => {
       mounted = false;
